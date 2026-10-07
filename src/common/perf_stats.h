@@ -548,6 +548,12 @@ struct Tuning {
 /// the other threads); elsewhere they are not pinned.
 constexpr u64 AffinityAuto = ~0ULL;
 
+/// Pipelines queued or being compiled by the background compiler threads (async_pipelines).
+inline std::atomic<u32>& PipelinesCompiling() {
+    static std::atomic<u32> count{0};
+    return count;
+}
+
 inline Tuning& GetTuning() {
     static Tuning tuning{};
     return tuning;
