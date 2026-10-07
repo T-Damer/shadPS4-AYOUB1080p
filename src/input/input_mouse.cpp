@@ -35,16 +35,13 @@ float mouse_gyro_last_velocity[2] = {0.0f, 0.0f};
 std::atomic<bool> stick_motion_enabled{true};
 bool stick_motion_was_active = false;
 float stick_motion_last[2] = {0.0f, 0.0f};
-// touchpad_swipe binding: held, the sticks drag one or two fingers on the touchpad; a short tap
-// clicks it.
-std::atomic<bool> swipe_held{false};
-std::atomic<bool> swipe_release_pending{false};
-std::atomic<u64> swipe_start_ms{0};
-bool swipe_moved = false;
-int touchpad_click_pulse = 0;
-float swipe_position[2] = {0.5f, 0.5f};
-float second_finger[2] = {0.75f, 0.5f};
-bool two_fingers = false;
+// Touch mode (touchpad_swipe binding toggles it): the sticks are fingers on the touchpad.
+std::atomic<bool> touch_mode{false};
+std::atomic<bool> touch_click_held{false}; // Cross while in touch mode: touchpad click
+bool touch_click_sent = false;
+// Fingers on the emulated touchpad (also drawn by the touch mode overlay).
+std::array<std::atomic<bool>, 2> finger_down{false, false};
+std::array<std::atomic<float>, 4> finger_position{0.5f, 0.5f, 0.5f, 0.5f}; // x0, y0, x1, y1
 // Stick positions before touch mode centres them for the game (LeftX, LeftY, RightX, RightY).
 std::array<std::atomic<int>, 4> raw_sticks{0x80, 0x80, 0x80, 0x80};
 
@@ -84,7 +81,22 @@ void ToggleStickToGyro() {
 }
 
 bool IsTouchModeActive() {
-    return swipe_held;
+    return touch_mode;
+}
+
+void SetTouchClick(bool held) {
+    touch_click_held = held;
+}
+
+TouchView GetTouchView() {
+    TouchView view{};
+    view.active = touch_mode;
+    for (int i = 0; i < 2; ++i) {
+        view.down[i] = finger_down[i];
+        view.x[i] = finger_position[i * 2];
+        view.y[i] = finger_position[i * 2 + 1];
+    }
+    return view;
 }
 
 void NoteStickAxis(Axis axis, int value) {
@@ -99,14 +111,10 @@ int RawStickAxis(Axis axis) {
     return index < raw_sticks.size() ? raw_sticks[index].load() : 0x80;
 }
 
-void SetTouchpadSwipe(bool held) {
-    if (held) {
-        swipe_start_ms = SDL_GetTicks();
-        swipe_held = true;
-    } else if (swipe_held) {
-        swipe_held = false;
-        swipe_release_pending = true;
-    }
+void ToggleTouchMode() {
+    touch_mode = !touch_mode;
+    touch_click_held = false;
+    LOG_INFO(Input, "Touch mode {}", touch_mode ? "on" : "off");
 }
 
 void EmulateJoystick(GameController* controller, u32 interval) {
@@ -245,7 +253,7 @@ static void EmulateMotionFromStick(GameController* controller, u32 interval) {
         return;
     }
     stick_motion_was_active = true;
-    if (swipe_held) {
+    if (touch_mode) {
         // Touch mode: the sticks drive the touchpad, the controller stays still.
         const float still[3] = {0.0f, 0.0f, 0.0f};
         stick_motion_last[0] = stick_motion_last[1] = 0.0f;
@@ -273,13 +281,16 @@ static void EmulateMotionFromStick(GameController* controller, u32 interval) {
     controller->UpdateGyro(gyro);
 }
 
-// touchpad_swipe: for controllers without a touchpad. While held, a finger touches the touchpad
-// and follows the stick pushed (centre at rest), so a stick movement is a swipe; with both sticks
-// pushed, two fingers touch it, one per stick. A short tap without moving a stick clicks the
-// touchpad instead.
-static void EmulateTouchpadSwipe(GameController* controller) {
+// Touch mode, for controllers without a touchpad: a finger touches the touchpad while a stick is
+// pushed and follows it, so a stick movement is a swipe; with both sticks pushed, two fingers
+// touch it, the left stick on the left half and the right stick on the right half. Cross clicks
+// the touchpad (a finger at the centre if no stick is pushed).
+static void EmulateTouchpad(GameController* controller) {
     using Libraries::Pad::OrbisPadButtonDataOffset;
-    if (swipe_held) {
+    bool want[2] = {false, false};
+    float position[2][2] = {{0.5f, 0.5f}, {0.5f, 0.5f}};
+    const bool click = touch_mode && touch_click_held;
+    if (touch_mode) {
         // The real stick positions: the game's sticks are centred in touch mode.
         const float rx = DeflectionOf(RawStickAxis(Axis::RightX)),
                     ry = DeflectionOf(RawStickAxis(Axis::RightY));
@@ -287,49 +298,41 @@ static void EmulateTouchpadSwipe(GameController* controller) {
                     ly = DeflectionOf(RawStickAxis(Axis::LeftY));
         const bool left_pushed = lx * lx + ly * ly > 0.09f;
         const bool right_pushed = rx * rx + ry * ry > 0.09f;
-        if (left_pushed || right_pushed) {
-            swipe_moved = true;
-        }
         if (left_pushed && right_pushed) {
-            // Both sticks: two fingers, the left stick on the left half of the touchpad and the
-            // right stick on the right half.
-            swipe_position[0] = 0.25f + lx * 0.22f;
-            swipe_position[1] = 0.5f + ly * 0.45f;
-            second_finger[0] = 0.75f + rx * 0.22f;
-            second_finger[1] = 0.5f + ry * 0.45f;
-            controller->SetTouchpadState(0, true, swipe_position[0], swipe_position[1]);
-            controller->SetTouchpadState(1, true, second_finger[0], second_finger[1]);
-            two_fingers = true;
-        } else {
-            const float x = left_pushed ? lx : rx, y = left_pushed ? ly : ry;
-            swipe_position[0] = 0.5f + x * 0.45f;
-            swipe_position[1] = 0.5f + y * 0.45f;
-            controller->SetTouchpadState(0, true, swipe_position[0], swipe_position[1]);
-            if (two_fingers) {
-                controller->SetTouchpadState(1, false, second_finger[0], second_finger[1]);
-                two_fingers = false;
-            }
+            want[0] = want[1] = true;
+            position[0][0] = 0.25f + lx * 0.22f;
+            position[0][1] = 0.5f + ly * 0.45f;
+            position[1][0] = 0.75f + rx * 0.22f;
+            position[1][1] = 0.5f + ry * 0.45f;
+        } else if (left_pushed || right_pushed) {
+            want[0] = true;
+            position[0][0] = 0.5f + (left_pushed ? lx : rx) * 0.45f;
+            position[0][1] = 0.5f + (left_pushed ? ly : ry) * 0.45f;
+        } else if (click) {
+            want[0] = true;
         }
-    } else if (swipe_release_pending.exchange(false)) {
-        controller->SetTouchpadState(0, false, swipe_position[0], swipe_position[1]);
-        if (two_fingers) {
-            controller->SetTouchpadState(1, false, second_finger[0], second_finger[1]);
-            two_fingers = false;
-        }
-        if (!swipe_moved && SDL_GetTicks() - swipe_start_ms < 300) {
-            touchpad_click_pulse = 2;
-        }
-        swipe_moved = false;
     }
-    if (touchpad_click_pulse > 0) {
-        controller->Button(OrbisPadButtonDataOffset::TouchPad, touchpad_click_pulse == 2);
-        --touchpad_click_pulse;
+    for (int i = 0; i < 2; ++i) {
+        if (want[i]) {
+            finger_position[i * 2] = position[i][0];
+            finger_position[i * 2 + 1] = position[i][1];
+            controller->SetTouchpadState(i, true, position[i][0], position[i][1]);
+            finger_down[i] = true;
+        } else if (finger_down[i]) {
+            controller->SetTouchpadState(i, false, finger_position[i * 2],
+                                         finger_position[i * 2 + 1]);
+            finger_down[i] = false;
+        }
+    }
+    if (click != touch_click_sent) {
+        controller->Button(OrbisPadButtonDataOffset::TouchPad, click);
+        touch_click_sent = click;
     }
 }
 
 Uint32 MousePolling(void* param, Uint32 id, Uint32 interval) {
     auto* controller = (GameController*)param;
-    EmulateTouchpadSwipe(controller);
+    EmulateTouchpad(controller);
     if (EmulateShake(controller)) {
         return interval;
     }

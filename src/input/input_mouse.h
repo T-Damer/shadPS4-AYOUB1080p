@@ -22,9 +22,19 @@ void SetMouseParams(float mouse_deadzone_offset, float mouse_speed, float mouse_
 void SetMouseGyroRollMode(bool mode);
 void SetMotionShake(bool active);
 void ToggleStickToGyro();
-void SetTouchpadSwipe(bool held);
-/// touchpad_swipe held: the sticks drive the touchpad instead of the game's sticks.
+/// touchpad_swipe binding: touch mode on/off (the sticks drive the touchpad, Cross clicks it).
+void ToggleTouchMode();
 bool IsTouchModeActive();
+void SetTouchClick(bool held);
+
+/// Touch mode state for the on-screen indicator (positions 0-1 on the touchpad).
+struct TouchView {
+    bool active;
+    bool down[2];
+    float x[2];
+    float y[2];
+};
+TouchView GetTouchView();
 /// Stick positions as the controller reports them (0-255), also while in touch mode.
 void NoteStickAxis(Axis axis, int value);
 int RawStickAxis(Axis axis);

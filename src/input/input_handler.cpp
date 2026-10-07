@@ -832,13 +832,20 @@ void ControllerOutput::FinalizeUpdate(u8 gamepad_index) {
             SetMotionShake(new_button_state);
             break;
         case TOUCHPAD_SWIPE:
-            SetTouchpadSwipe(new_button_state);
-            // Touch mode: the sticks stop moving the game's sticks while it is held.
-            for (const Axis axis : {Axis::LeftX, Axis::LeftY, Axis::RightX, Axis::RightY}) {
-                controller->Axis(axis, new_button_state ? 0x80 : RawStickAxis(axis));
+            if (new_button_state) {
+                ToggleTouchMode();
+                // In touch mode the game's sticks stay centred; back to the real ones after.
+                const bool touch = IsTouchModeActive();
+                for (const Axis axis : {Axis::LeftX, Axis::LeftY, Axis::RightX, Axis::RightY}) {
+                    controller->Axis(axis, touch ? 0x80 : RawStickAxis(axis));
+                }
             }
             break;
         default: // is a normal key (hopefully)
+            if (button == SDL_GAMEPAD_BUTTON_SOUTH && IsTouchModeActive()) {
+                SetTouchClick(new_button_state); // touch mode: Cross clicks the touchpad
+                break;
+            }
             controller->Button(SDLGamepadToOrbisButton(button), new_button_state);
             break;
         }
