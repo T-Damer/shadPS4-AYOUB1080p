@@ -154,6 +154,8 @@ const commands = {
       // 21:9 (3456x1440), patches added by ps4kit to the fork's patch file
       ultrawide: { neo: false, on: ['Ultrawide 3456x1440 21:9 (render and output)'] },
       'pro-ultrawide': { neo: true, on: ['PS4 Pro mode: ultrawide 3456x1440 21:9 without checkerboard'] },
+      uw1080: { neo: false, on: ['Ultrawide 2560x1080 21:9 (render and output)'] },
+      'pro-uw1080': { neo: true, on: ['PS4 Pro mode: ultrawide 2560x1080 21:9 without checkerboard'] },
     };
     const RES = Object.values(PRESETS).flatMap((p) => p.on);
     const xmlPath = path.join(cfg.userDir, cfg.patchFile);
@@ -167,7 +169,7 @@ const commands = {
       console.log(`Current: ${current}\nAvailable: ${Object.keys(PRESETS).join(', ')}`);
       console.log('  1080p/1440p/2160p: base PS4 mode at that resolution (lighter)');
       console.log('  pro*: PS4 Pro mode (extra Pro effects) at that resolution');
-      console.log('  ultrawide / pro-ultrawide: 21:9 at 3456x1440 (experimental)');
+      console.log('  ultrawide / pro-ultrawide: 21:9 at 3456x1440, uw1080 / pro-uw1080: 21:9 at 2560x1080 (experimental)');
       return;
     }
     const p = PRESETS[pos[0]];
@@ -207,6 +209,76 @@ const commands = {
       fs.writeFileSync(path.join(dir, `${stamp}-report.txt`), report + '\n');
       console.log(`\nSaved to perf-logs/${stamp}-*`);
     }
+  },
+
+  /**
+   * Live A/B test in the running game: applies each variant of perf_tuning.ini for a while and
+   * compares fps and the load of the emulator's GPU thread. Stand still in a busy place.
+   */
+  async abtest({ flags }) {
+    const variants = [
+      ['baseline', {}],
+      ['scout', { scout: 1 }],
+      ['scout+fast', { scout: 1, scout_fast: 1 }],
+      ['gpu priority', { gpu_threads_priority: 2 }],
+      ['hot pages', { hot_page_faults: 8 }],
+      ['asc queue', { asc_queue: 1 }],
+      ['baseline again', {}],
+    ];
+    const seconds = Number(flags.seconds || 25);
+    const log = path.join(cfg.userDir, 'log', 'shad_log.txt');
+    const saved = readTuning();
+    const reset = { scout: 0, scout_fast: 0, gpu_threads_priority: 0, hot_page_faults: 0, asc_queue: 0 };
+    const rows = [];
+    console.log(`A/B test: ${variants.length} variants x ${seconds + 5} s. Keep the camera still.`);
+    try {
+      for (const [name, kv] of variants) {
+        setTuning({ perf_log: 1, ...reset, ...kv });
+        await new Promise((r) => setTimeout(r, 5000)); // settle
+        const start = fs.statSync(log).size;
+        await new Promise((r) => setTimeout(r, seconds * 1000));
+        const fd = fs.openSync(log, 'r');
+        const len = fs.statSync(log).size - start;
+        const buf = Buffer.alloc(Math.max(0, len));
+        fs.readSync(fd, buf, 0, buf.length, start);
+        fs.closeSync(fd);
+        const { seconds: secs, threads } = perf.parse(buf.toString('utf8'));
+        const avg = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : NaN);
+        const cp = threads.get('shadPS4:GpuCommandProcessor');
+        const row = { name, fps: avg(secs.map((s) => s.fps)), work: avg(secs.map((s) => s.cpWork)), cp: cp ? avg(cp.samples) : NaN, over33: secs.reduce((x, s) => x + s.over33, 0) };
+        rows.push(row);
+        console.log(`  ${name.padEnd(16)} ${row.fps.toFixed(1).padStart(5)} fps  GPU thread work ${row.work.toFixed(0).padStart(3)}%  CPU ${row.cp.toFixed(0).padStart(3)}%  frames>33ms ${row.over33}`);
+      }
+    } finally {
+      fs.writeFileSync(tuningPath(), saved ? saved + '\n' : '');
+      console.log('perf_tuning.ini restored.');
+    }
+  },
+
+  /** Emulated display refresh: the game can present at most this many frames per second. */
+  async fps({ pos }) {
+    const game = readGameConfig();
+    if (!pos[0]) { console.log(`vblank_frequency: ${game.GPU?.vblank_frequency ?? '60 (default)'}`); return; }
+    const hz = Number(pos[0]);
+    if (!(hz >= 30 && hz <= 240)) throw new Error('usage: fps <30-240>');
+    game.GPU = { ...game.GPU, vblank_frequency: hz };
+    writeGameConfig(game);
+    console.log(`Frame rate cap set to ${hz} (vblank_frequency), applies at the next launch.` +
+      (hz > 60 ? ' Experimental: if the game runs too fast (movement, timers), go back to 60.' : ''));
+  },
+
+  /** FPS counter overlay (also toggled in game with F10). */
+  async overlay({ pos }) {
+    // Not overridable per game: global config.json (Big Picture rewrites it when it exits, so
+    // change it while Big Picture is closed).
+    const p = path.join(cfg.userDir, 'config.json');
+    const global = JSON.parse(fs.readFileSync(p, 'utf8'));
+    const on = pos[0] !== 'off';
+    global.General = { ...global.General, show_fps_counter: on };
+    fs.writeFileSync(p, JSON.stringify(global, null, 2) + '\n');
+    const game = readGameConfig();
+    if (game.General?.show_fps_counter !== undefined) { delete game.General.show_fps_counter; writeGameConfig(game); }
+    console.log(`FPS overlay ${on ? 'on' : 'off'} from the next launch (F10 toggles it in game).`);
   },
 
   /** Unattended run from boot: launch, wait, quit, keep the log, print the summary. */
@@ -266,14 +338,21 @@ const commands = {
   extract <pkg>... [--to dir]   extract game / update / DLC PKGs (correctly - see README)
   verify <pkg> [dir] [--deep]   compare an extracted folder with its PKG
   preset [name]                 show or set the resolution preset
-  launch [--perf] [--build b]   start the game (--perf: performance logging; b: release, dev, znver3)
+  launch [--perf] [--build b]   start the game (--perf: performance logging; b: own, release, fresh)
+  fps [hz]                      show or set the frame rate cap (emulated refresh, default 60)
+  overlay [on|off]              FPS counter overlay (F10 in game)
   perf [log] [--skip N]         summarise the performance logging of the last session
   bench <name> [--build b] [--seconds 180] [key=value]...
                                 unattended run from boot with these settings, then its summary
   tune [key=value]...           show or change perf_tuning.ini (applies while the game runs)
+  abtest [--seconds 25]         live A/B of speed options in the running game (stand still)
   status                        paths, versions, preset, cache size`);
   },
 };
+
+function gameConfigPath() { return path.join(cfg.userDir, 'custom_configs', `${cfg.titleId}.json`); }
+function readGameConfig() { return fs.existsSync(gameConfigPath()) ? JSON.parse(fs.readFileSync(gameConfigPath(), 'utf8')) : {}; }
+function writeGameConfig(c) { fs.writeFileSync(gameConfigPath(), JSON.stringify(c, null, 4) + '\n'); }
 
 function tuningPath() { return path.join(cfg.userDir, 'perf_tuning.ini'); }
 function readTuning() { return fs.existsSync(tuningPath()) ? fs.readFileSync(tuningPath(), 'utf8').trim() : ''; }
