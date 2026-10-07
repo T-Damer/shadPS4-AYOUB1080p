@@ -27,9 +27,8 @@ cache. First 20 s skipped.
   the cache is warm - first visits to new areas still stutter while it fills).
 - **Crash:** 1 of 6 boots of the release build crashed while loading (JobWorker5 jumped to an
   invalid address, `access=execute`). Not seen with the own build so far; if it happens, relaunch.
-- **Gameplay (city, live capture 2026-10-07):** ~3,400 draws/frame (the intro bench has ~1,300).
-  The emulator's GPU thread is 97-99% busy at 60 fps, so it is the ceiling: raising
-  `vblank_frequency` above 60 can only help indoors/cutscenes, not in the city. 240 fps is out of
+- **Gameplay (forest/village area before the city, live capture 2026-10-07):** ~3,400 draws/frame (the intro bench has ~1,300).
+  The emulator's GPU thread is 97-99% busy at 60 fps, so it is the ceiling there. 240 fps is out of
   reach on this CPU.
 - **"Lag on new scenes":** hitches of 0.6-1.2 s, all from pipeline compilation (up to 14 new
   pipelines in one second), the first time an area / effect is seen. Graphics pipelines compile in
@@ -41,14 +40,14 @@ cache. First 20 s skipped.
   3440 aligned to 128 px). The game has no hard-coded 16:9 constant, so the camera is expected to
   widen (hor+); HUD may stretch. Unverified visually. Patch file backup:
   `inFAMOUS Second Son.xml.before-ultrawide`.
-- **abtest in the city (2026-10-07, standing still):** baseline 53.7, relax 171700 48.8, scout
+- **abtest in the forest/village area before the city (2026-10-07, standing still):** baseline 53.7, relax 171700 48.8, scout
   47.1, scout+fast 51.0, gpu priority 52.3, hot pages 50.8, asc queue 45.2, baseline again 46.1.
   No option beats the 7.6 fps drift between the two baselines (laptop heating up / clocking
   down): none is worth enabling. The CPU averaged ~3.4 GHz (107% of base) while the 7735H can
   boost one core to ~4.75 GHz. Windows plan already has boost Aggressive, EPP 25, min 80%.
   Machenike L16P: its performance/turbo mode (Control Center / Fn hotkey) is the remaining lever.
   Rerun in Turbo: baselines 50.1 / 49.7 (no more drift), options 48.4-51.1: still nothing to gain;
-  the CPU still averages ~108% of base clock. ~50 fps is the city ceiling on this laptop.
+  the CPU still averages ~108% of base clock. ~50 fps is the ceiling in that area; the city itself (more draws) is not measured yet.
 - Frame cap: `ps4kit fps 144` (vblank_frequency 144 for inFAMOUS, 2026-10-07) to go above 60 in
   lighter scenes. Check the game does not run too fast; `ps4kit fps 60` to undo.
 - **Display:** the external monitor is on the RTX 4060, the laptop panel on the AMD iGPU. Play on
