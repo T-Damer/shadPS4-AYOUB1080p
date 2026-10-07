@@ -777,6 +777,11 @@ void ControllerOutput::FinalizeUpdate(u8 gamepad_index) {
         case HOTKEY_TOGGLE_MOUSE_TO_GYRO:
             PushSDLEvent(SDL_EVENT_MOUSE_TO_GYRO);
             break;
+        case HOTKEY_TOGGLE_STICK_TO_GYRO:
+            if (new_button_state) {
+                ToggleStickToGyro();
+            }
+            break;
         case HOTKEY_TOGGLE_MOUSE_TO_TOUCHPAD:
             PushSDLEvent(SDL_EVENT_MOUSE_TO_TOUCHPAD);
             break;
