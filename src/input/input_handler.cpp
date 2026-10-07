@@ -833,6 +833,10 @@ void ControllerOutput::FinalizeUpdate(u8 gamepad_index) {
             break;
         case TOUCHPAD_SWIPE:
             SetTouchpadSwipe(new_button_state);
+            // Touch mode: the sticks stop moving the game's sticks while it is held.
+            for (const Axis axis : {Axis::LeftX, Axis::LeftY, Axis::RightX, Axis::RightY}) {
+                controller->Axis(axis, new_button_state ? 0x80 : RawStickAxis(axis));
+            }
             break;
         default: // is a normal key (hopefully)
             controller->Button(SDLGamepadToOrbisButton(button), new_button_state);
@@ -876,7 +880,17 @@ void ControllerOutput::FinalizeUpdate(u8 gamepad_index) {
         default:
             break;
         }
-        controller->Axis(c_axis, GetAxis(-0x80, 0x7f, *new_param * multiplier));
+        const int value = GetAxis(-0x80, 0x7f, *new_param * multiplier);
+        if (c_axis == Axis::LeftX || c_axis == Axis::LeftY || c_axis == Axis::RightX ||
+            c_axis == Axis::RightY) {
+            NoteStickAxis(c_axis, value);
+            if (IsTouchModeActive()) {
+                // The sticks drive the touchpad (touchpad_swipe held): the game sees them centred.
+                controller->Axis(c_axis, 0x80);
+                return;
+            }
+        }
+        controller->Axis(c_axis, value);
     }
 }
 

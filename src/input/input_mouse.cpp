@@ -45,6 +45,8 @@ int touchpad_click_pulse = 0;
 float swipe_position[2] = {0.5f, 0.5f};
 float second_finger[2] = {0.75f, 0.5f};
 bool two_fingers = false;
+// Stick positions before touch mode centres them for the game (LeftX, LeftY, RightX, RightY).
+std::array<std::atomic<int>, 4> raw_sticks{0x80, 0x80, 0x80, 0x80};
 
 // Switches mouse to a set mode or turns mouse emulation off if it was already in that mode.
 // Returns whether the mode is turned on.
@@ -79,6 +81,22 @@ void ToggleStickToGyro() {
     stick_motion_enabled = !stick_motion_enabled;
     LOG_INFO(Input, "Motion from the right stick (controllers without motion sensors) {}",
              stick_motion_enabled ? "on" : "off");
+}
+
+bool IsTouchModeActive() {
+    return swipe_held;
+}
+
+void NoteStickAxis(Axis axis, int value) {
+    const auto index = std::to_underlying(axis);
+    if (index < raw_sticks.size()) {
+        raw_sticks[index] = value;
+    }
+}
+
+int RawStickAxis(Axis axis) {
+    const auto index = std::to_underlying(axis);
+    return index < raw_sticks.size() ? raw_sticks[index].load() : 0x80;
 }
 
 void SetTouchpadSwipe(bool held) {
@@ -200,9 +218,13 @@ static bool EmulateShake(GameController* controller) {
     return true;
 }
 
-static float StickDeflection(const State& state, Axis axis) {
-    const float v = (state.axes[std::to_underlying(axis)] - 128) / 127.0f;
+static float DeflectionOf(int axis_value) {
+    const float v = (axis_value - 128) / 127.0f;
     return std::abs(v) < 0.1f ? 0.0f : std::clamp(v, -1.0f, 1.0f);
+}
+
+static float StickDeflection(const State& state, Axis axis) {
+    return DeflectionOf(state.axes[std::to_underlying(axis)]);
 }
 
 // Controllers without motion sensors (XInput pads, keyboard): the right stick also moves the
@@ -223,6 +245,14 @@ static void EmulateMotionFromStick(GameController* controller, u32 interval) {
         return;
     }
     stick_motion_was_active = true;
+    if (swipe_held) {
+        // Touch mode: the sticks drive the touchpad, the controller stays still.
+        const float still[3] = {0.0f, 0.0f, 0.0f};
+        stick_motion_last[0] = stick_motion_last[1] = 0.0f;
+        controller->UpdateAcceleration(constant_down_accel);
+        controller->UpdateGyro(still);
+        return;
+    }
     const auto state = controller->ReadState();
     const float dx = StickDeflection(state, Axis::RightX);
     const float dy = StickDeflection(state, Axis::RightY);
@@ -250,11 +280,11 @@ static void EmulateMotionFromStick(GameController* controller, u32 interval) {
 static void EmulateTouchpadSwipe(GameController* controller) {
     using Libraries::Pad::OrbisPadButtonDataOffset;
     if (swipe_held) {
-        const auto state = controller->ReadState();
-        const float rx = StickDeflection(state, Axis::RightX),
-                    ry = StickDeflection(state, Axis::RightY);
-        const float lx = StickDeflection(state, Axis::LeftX),
-                    ly = StickDeflection(state, Axis::LeftY);
+        // The real stick positions: the game's sticks are centred in touch mode.
+        const float rx = DeflectionOf(RawStickAxis(Axis::RightX)),
+                    ry = DeflectionOf(RawStickAxis(Axis::RightY));
+        const float lx = DeflectionOf(RawStickAxis(Axis::LeftX)),
+                    ly = DeflectionOf(RawStickAxis(Axis::LeftY));
         const bool left_pushed = lx * lx + ly * ly > 0.09f;
         const bool right_pushed = rx * rx + ry * ry > 0.09f;
         if (left_pushed || right_pushed) {
