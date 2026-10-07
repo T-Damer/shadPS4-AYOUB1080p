@@ -421,7 +421,7 @@ void L::Draw() {
         ImGui::GetForegroundDrawList()->AddText(pos, color, "Emulation Paused");
     }
 
-    if (const auto touch = Input::GetTouchView(); touch.active) {
+    if (const auto touch = Input::GetTouchView(); touch.active || touch.held_after) {
         // Touch mode: the emulated touchpad with a cursor for each stick, filled while touching.
         const ImGuiViewport* viewport = GetMainViewport();
         const float pad_width = std::min(viewport->WorkSize.x * 0.25f, 420.0f);
@@ -435,8 +435,12 @@ void L::Draw() {
                       ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoDocking |
                       ImGuiWindowFlags_NoInputs)) {
             SetWindowFontScale(0.85f);
-            Text("Touch: sticks move, hold L2/R2 to touch, L3/R3 flick, Cross click, "
-                 "Select exit");
+            if (touch.active) {
+                Text("Touch: sticks move, hold L2/R2 to touch, L3/R3 flick, Cross click, "
+                     "Select exit");
+            } else {
+                Text("Finger held: release L2/R2 to lift it");
+            }
             const ImVec2 origin = GetCursorScreenPos();
             const ImVec2 corner(origin.x + pad_width, origin.y + pad_height);
             ImDrawList* draw = GetWindowDrawList();

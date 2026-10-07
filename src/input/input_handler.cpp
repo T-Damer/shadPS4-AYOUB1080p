@@ -845,7 +845,8 @@ void ControllerOutput::FinalizeUpdate(u8 gamepad_index) {
                     controller->Axis(a, GetAxis(-0x80, 0x7f, touch ? 0 : TouchAxisValue(a)));
                 }
                 for (const Axis a : {Axis::TriggerLeft, Axis::TriggerRight}) {
-                    const int value = touch ? 0 : TouchAxisValue(a);
+                    // A trigger still holding a finger stays away from the game until let go.
+                    const int value = IsTouchTriggerHeld(a) ? 0 : TouchAxisValue(a);
                     controller->Axis(a, GetAxis(0x0, 0x7f, value));
                     controller->Button(a == Axis::TriggerLeft ? OrbisPadButtonDataOffset::L2
                                                               : OrbisPadButtonDataOffset::R2,
@@ -898,7 +899,7 @@ void ControllerOutput::FinalizeUpdate(u8 gamepad_index) {
         case Axis::TriggerLeft:
             ApplyDeadzone(new_param, lefttrigger_deadzone[gamepad_index]);
             NoteTouchAxis(c_axis, *new_param);
-            if (IsTouchModeActive()) {
+            if (IsTouchTriggerHeld(c_axis)) {
                 return; // the trigger puts a finger down instead
             }
             controller->Axis(c_axis, GetAxis(0x0, 0x7f, *new_param));
@@ -907,7 +908,7 @@ void ControllerOutput::FinalizeUpdate(u8 gamepad_index) {
         case Axis::TriggerRight:
             ApplyDeadzone(new_param, righttrigger_deadzone[gamepad_index]);
             NoteTouchAxis(c_axis, *new_param);
-            if (IsTouchModeActive()) {
+            if (IsTouchTriggerHeld(c_axis)) {
                 return;
             }
             controller->Axis(c_axis, GetAxis(0x0, 0x7f, *new_param));

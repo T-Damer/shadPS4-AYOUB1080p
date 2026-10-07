@@ -131,6 +131,9 @@ namespace {
 std::atomic<bool> touch_mode{false};
 std::atomic<bool> touch_click{false};
 std::array<std::atomic<bool>, 2> touch_flick_held{false, false};
+// Fingers kept on the touchpad after touch mode ends, while their trigger stays held, so the
+// game can get its buttons (R2 in inFAMOUS Second Son) while a finger holds a swipe.
+std::array<std::atomic<bool>, 2> finger_held_after{false, false};
 // Sticks (-128..128) and triggers (0..128) as the player holds them, by Axis.
 std::array<std::atomic<int>, std::to_underlying(Axis::AxisMax)> touch_axes{};
 
@@ -159,30 +162,33 @@ float StickOf(Axis axis) {
     return std::clamp(touch_axes[std::to_underlying(axis)].load() / 128.0f, -1.0f, 1.0f);
 }
 
-void LiftAll(GameController* controller) {
-    for (int f = 0; f < 2; ++f) {
-        if (finger_slot[f] >= 0) {
-            controller->SetTouchpadState(finger_slot[f], false, finger_shown[f * 2],
-                                         finger_shown[f * 2 + 1]);
-            finger_slot[f] = -1;
-        }
-        finger_shown_down[f] = false;
-        flicks[f].step = -1;
-    }
-    if (touch_click_sent) {
-        controller->Button(Libraries::Pad::OrbisPadButtonDataOffset::TouchPad, false);
-        touch_click_sent = false;
-    }
-}
-
 void EmulateStickTouch(GameController* controller, u32 interval) {
     if (!touch_mode) {
         if (touch_was_active) {
-            LiftAll(controller);
             touch_was_active = false;
+            if (touch_click_sent) {
+                controller->Button(Libraries::Pad::OrbisPadButtonDataOffset::TouchPad, false);
+                touch_click_sent = false;
+            }
+        }
+        const Axis triggers[2] = {Axis::TriggerLeft, Axis::TriggerRight};
+        for (int f = 0; f < 2; ++f) {
+            flicks[f].step = -1;
+            const bool keep = finger_held_after[f] &&
+                              touch_axes[std::to_underlying(triggers[f])] > 0x20;
+            if (!keep) {
+                finger_held_after[f] = false;
+                if (finger_slot[f] >= 0) {
+                    controller->SetTouchpadState(finger_slot[f], false, finger_shown[f * 2],
+                                                 finger_shown[f * 2 + 1]);
+                    finger_slot[f] = -1;
+                }
+                finger_shown_down[f] = false;
+            }
         }
         return;
     }
+    finger_held_after[0] = finger_held_after[1] = false;
     touch_was_active = true;
     const float seconds = std::max(interval, 1u) / 1000.0f;
     const Axis stick_axes[2][2] = {{Axis::LeftX, Axis::LeftY}, {Axis::RightX, Axis::RightY}};
@@ -249,6 +255,13 @@ void EmulateStickTouch(GameController* controller, u32 interval) {
 } // namespace
 
 void ToggleTouchMode() {
+    if (touch_mode) {
+        // A finger whose trigger is still held stays on the touchpad until the trigger is let go.
+        finger_held_after[0] = finger_shown_down[0].load() &&
+                               touch_axes[std::to_underlying(Axis::TriggerLeft)] > 0x20;
+        finger_held_after[1] = finger_shown_down[1].load() &&
+                               touch_axes[std::to_underlying(Axis::TriggerRight)] > 0x20;
+    }
     touch_mode = !touch_mode;
     touch_click = false;
     touch_flick_held[0] = touch_flick_held[1] = false;
@@ -257,6 +270,13 @@ void ToggleTouchMode() {
 
 bool IsTouchModeActive() {
     return touch_mode;
+}
+
+bool IsTouchTriggerHeld(Axis trigger) {
+    if (touch_mode) {
+        return true;
+    }
+    return finger_held_after[trigger == Axis::TriggerLeft ? 0 : 1];
 }
 
 void NoteTouchAxis(Axis axis, int value) {
@@ -284,6 +304,7 @@ void SetTouchFlick(int finger, bool held) {
 TouchView GetTouchView() {
     TouchView view{};
     view.active = touch_mode;
+    view.held_after = finger_held_after[0] || finger_held_after[1];
     for (int f = 0; f < 2; ++f) {
         view.down[f] = finger_shown_down[f];
         view.x[f] = finger_shown[f * 2];

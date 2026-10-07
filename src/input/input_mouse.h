@@ -32,6 +32,8 @@ void ApplyMouseInputBlockers();
 // clicks the touchpad, and L3 or R3 flicks that finger from its cursor the way the stick points.
 void ToggleTouchMode();
 bool IsTouchModeActive();
+// Whether a trigger is kept from the game: in touch mode, or holding a finger after it ended.
+bool IsTouchTriggerHeld(Axis trigger);
 // The player's stick or trigger value (after deadzones), which touch mode keeps from the game.
 void NoteTouchAxis(Axis axis, int value);
 int TouchAxisValue(Axis axis);
@@ -40,6 +42,7 @@ void SetTouchFlick(int finger, bool held);
 
 struct TouchView {
     bool active;
+    bool held_after; // a finger held by its trigger after touch mode ended
     bool down[2];
     float x[2];
     float y[2];
