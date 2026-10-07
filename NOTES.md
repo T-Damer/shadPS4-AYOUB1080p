@@ -68,9 +68,15 @@ cache. First 20 s skipped.
   The ultrawide patches now also set it (patch addresses 0x5f03fb height, 0x5f0403 width).
 - Intermittent crash while the save loads (~13 s after boot, JobWorker5 executes a garbage
   address): 3 of ~9 boots, release and own build alike, any resolution. Relaunch works.
-- Missing smoke-dash effect (2026-10-07): suspected `readback_relaxed_sites = 3f3e00` (stale
-  visibility data -> 28% fewer draws); turned off to test. Smooth shader compilation skipped nothing
-  in that session, so it is not the cause.
+- Missing smoke-dash / teleport effect (2026-10-07): caused by `readback_relaxed_sites = 3f3e00`
+  (that code reads a 16-byte vector the GPU writes, likely particle bounds used for culling; one
+  frame old data -> 28% fewer draws and the effect culled). Turned off: effect visible again. In
+  real gameplay it did not even help (52 fps on vs 57 off in a 40 s live A/B; the 60 vs 51 gain
+  was specific to the opening scene). Keep it off.
+- Gameplay ceiling: the emulator's GPU command thread is 95%+ busy at 45-57 fps. DLSS/FSR would
+  not help (host GPU not the limit, and an emulator has no motion vectors for DLSS). Changing the
+  render resolution makes the game compile many pipelines again (4 compiler threads busy for 10+
+  minutes), which costs fps until the cache is filled for the new size.
 - SDL3 (inside the emulator) reads gyro + accelerometer natively from the Flydigi Vader 3 Pro,
   Vader 4 Pro, Vader 5 Pro and Apex 5 in their D-input mode (USB VID 04B4 or 37D7). Apex 4 and
   Vader 2 only report motion in gyro-mouse mode; older models none. If the pad supports it, switch
