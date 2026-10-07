@@ -342,8 +342,20 @@ void Module::LoadModuleToMemory(u32& max_tls_index) {
         std::ranges::transform(lower_name, lower_name.begin(),
                                [](unsigned char c) { return std::tolower(c); });
         if (lower_name == "eboot.bin" || lower_name.ends_with(".elf")) {
-            MemoryPatcher::g_eboot_address = base_virtual_addr;
-            MemoryPatcher::g_eboot_image_size = base_size;
+            // Patches address the executable as loaded at 0x400000. A fixed address executable
+            // (first segment at p_vaddr 0x400000) has that segment at base + 0x400000, a
+            // position independent one (p_vaddr 0) at base: point at the first segment.
+            u64 first_vaddr = ~0ULL;
+            for (u16 i = 0; i < elf_header.e_phnum; i++) {
+                if (elf_pheader[i].p_type == PT_LOAD && elf_pheader[i].p_memsz != 0) {
+                    first_vaddr = std::min<u64>(first_vaddr, elf_pheader[i].p_vaddr);
+                }
+            }
+            if (first_vaddr == ~0ULL || first_vaddr >= base_size) {
+                first_vaddr = 0;
+            }
+            MemoryPatcher::g_eboot_address = base_virtual_addr + first_vaddr;
+            MemoryPatcher::g_eboot_image_size = base_size - first_vaddr;
             MemoryPatcher::g_eboot_name = name;
             MemoryPatcher::OnGameLoaded();
         }
