@@ -236,6 +236,7 @@ SettingsWindow::SettingsWindow(bool gameRunning) : isGameRunning(gameRunning) {
             customConfigFound = true;
             currentProfile =
                 runningGameSerial + " - " + std::string(Common::ElfInfo::Instance().Title());
+            currentCategory = SettingsCategory::Tweaks;
         }
     } else {
         GetProfileInfo();
@@ -381,6 +382,10 @@ void SettingsWindow::AddCategory(std::string name,
         if (ImGui::ImageButton(name.c_str(), id,
                                ImVec2(settingsIconSize * uiScale, settingsIconSize * uiScale))) {
             currentCategory = category;
+        }
+        if (currentCategory == category && currentCategory != lastScrolledCategory) {
+            ImGui::SetScrollHereX(0.5f);
+            lastScrolledCategory = currentCategory;
         }
     }
 
@@ -545,6 +550,7 @@ void SettingsWindow::DrawProfileSelector() {
                     if (!gameConfigExists) {
                         SaveSettings(profileIcons[i].serial);
                     }
+                    currentCategory = SettingsCategory::Tweaks;
                 }
             }
         }

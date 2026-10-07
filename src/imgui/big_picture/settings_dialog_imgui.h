@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <functional>
 #include <map>
+#include <optional>
 #include <variant>
 #include <SDL3/SDL.h>
 #include <imgui.h>
@@ -74,6 +75,8 @@ private:
 
     float uiScale = 1.0f;
     SettingsCategory currentCategory = SettingsCategory::Profiles;
+    // the category the row of category buttons was last scrolled to
+    std::optional<SettingsCategory> lastScrolledCategory;
     std::string currentProfile = "Global";
 
     std::string runningGameSerial = "";
