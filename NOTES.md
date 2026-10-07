@@ -63,6 +63,11 @@ cache. First 20 s skipped.
   Keyboard: Space toggles, I/J/K/L and W/A/S/D are the fingers. Automatic, no extra buttons; T turns
   the stick motion off/on, G still shakes.
 - Ultrawide / resolution changes in Tweaks apply at the next start of the game.
+- Ultrawide stretch fix: the camera aspect ratio is int[0x1D0CCC0] / int[0x1D0CCC4] (eboot 1.07),
+  a display size hard-coded to 1920x1080 at eboot+0x1f03f8 (`mov [r15],438h; mov [r12],780h`).
+  The ultrawide patches now also set it (patch addresses 0x5f03fb height, 0x5f0403 width).
+- Intermittent crash while the save loads (~13 s after boot, JobWorker5 executes a garbage
+  address): 3 of ~9 boots, release and own build alike, any resolution. Relaunch works.
 - Missing smoke-dash effect (2026-10-07): suspected `readback_relaxed_sites = 3f3e00` (stale
   visibility data -> 28% fewer draws); turned off to test. Smooth shader compilation skipped nothing
   in that session, so it is not the cause.
