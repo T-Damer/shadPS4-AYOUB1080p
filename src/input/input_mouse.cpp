@@ -35,13 +35,16 @@ float mouse_gyro_last_velocity[2] = {0.0f, 0.0f};
 std::atomic<bool> stick_motion_enabled{true};
 bool stick_motion_was_active = false;
 float stick_motion_last[2] = {0.0f, 0.0f};
-// touchpad_swipe binding: held, the sticks drag a finger on the touchpad; a short tap clicks it.
+// touchpad_swipe binding: held, the sticks drag one or two fingers on the touchpad; a short tap
+// clicks it.
 std::atomic<bool> swipe_held{false};
 std::atomic<bool> swipe_release_pending{false};
 std::atomic<u64> swipe_start_ms{0};
 bool swipe_moved = false;
 int touchpad_click_pulse = 0;
 float swipe_position[2] = {0.5f, 0.5f};
+float second_finger[2] = {0.75f, 0.5f};
+bool two_fingers = false;
 
 // Switches mouse to a set mode or turns mouse emulation off if it was already in that mode.
 // Returns whether the mode is turned on.
@@ -241,27 +244,48 @@ static void EmulateMotionFromStick(GameController* controller, u32 interval) {
 }
 
 // touchpad_swipe: for controllers without a touchpad. While held, a finger touches the touchpad
-// and follows the stick pushed furthest (centre at rest), so a stick movement is a swipe. A short
-// tap without moving a stick clicks the touchpad instead.
+// and follows the stick pushed (centre at rest), so a stick movement is a swipe; with both sticks
+// pushed, two fingers touch it, one per stick. A short tap without moving a stick clicks the
+// touchpad instead.
 static void EmulateTouchpadSwipe(GameController* controller) {
     using Libraries::Pad::OrbisPadButtonDataOffset;
     if (swipe_held) {
         const auto state = controller->ReadState();
-        float x = StickDeflection(state, Axis::RightX), y = StickDeflection(state, Axis::RightY);
+        const float rx = StickDeflection(state, Axis::RightX),
+                    ry = StickDeflection(state, Axis::RightY);
         const float lx = StickDeflection(state, Axis::LeftX),
                     ly = StickDeflection(state, Axis::LeftY);
-        if (lx * lx + ly * ly > x * x + y * y) {
-            x = lx;
-            y = ly;
-        }
-        if (x * x + y * y > 0.09f) {
+        const bool left_pushed = lx * lx + ly * ly > 0.09f;
+        const bool right_pushed = rx * rx + ry * ry > 0.09f;
+        if (left_pushed || right_pushed) {
             swipe_moved = true;
         }
-        swipe_position[0] = 0.5f + x * 0.45f;
-        swipe_position[1] = 0.5f + y * 0.45f;
-        controller->SetTouchpadState(0, true, swipe_position[0], swipe_position[1]);
+        if (left_pushed && right_pushed) {
+            // Both sticks: two fingers, the left stick on the left half of the touchpad and the
+            // right stick on the right half.
+            swipe_position[0] = 0.25f + lx * 0.22f;
+            swipe_position[1] = 0.5f + ly * 0.45f;
+            second_finger[0] = 0.75f + rx * 0.22f;
+            second_finger[1] = 0.5f + ry * 0.45f;
+            controller->SetTouchpadState(0, true, swipe_position[0], swipe_position[1]);
+            controller->SetTouchpadState(1, true, second_finger[0], second_finger[1]);
+            two_fingers = true;
+        } else {
+            const float x = left_pushed ? lx : rx, y = left_pushed ? ly : ry;
+            swipe_position[0] = 0.5f + x * 0.45f;
+            swipe_position[1] = 0.5f + y * 0.45f;
+            controller->SetTouchpadState(0, true, swipe_position[0], swipe_position[1]);
+            if (two_fingers) {
+                controller->SetTouchpadState(1, false, second_finger[0], second_finger[1]);
+                two_fingers = false;
+            }
+        }
     } else if (swipe_release_pending.exchange(false)) {
         controller->SetTouchpadState(0, false, swipe_position[0], swipe_position[1]);
+        if (two_fingers) {
+            controller->SetTouchpadState(1, false, second_finger[0], second_finger[1]);
+            two_fingers = false;
+        }
         if (!swipe_moved && SDL_GetTicks() - swipe_start_ms < 300) {
             touchpad_click_pulse = 2;
         }
