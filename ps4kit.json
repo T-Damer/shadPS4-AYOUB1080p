@@ -2,7 +2,8 @@
   "builds": {
     "own": "E:\\Entertaiment\\shadPS4-own\\shadps4.exe",
     "release": "E:\\Entertaiment\\shadPS4-AYOUB1080p-1.0\\shadps4.exe",
-    "fresh": "E:\\Projects\\shadPS4-AYOUB1080p\\build-znver3\\shadps4.exe"
+    "fresh": "E:\\Projects\\shadPS4-AYOUB1080p\\build-znver3\\shadps4.exe",
+    "fixbuild": "E:\\Entertaiment\\shadPS4-FixBuild\\shadps4.exe"
   },
   "defaultBuild": "own",
   "userDir": "E:\\Entertaiment\\shadPS4-user",

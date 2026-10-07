@@ -98,3 +98,20 @@ cache. First 20 s skipped.
     and forth also shakes. If Space Station can map the pad's gyro to mouse movement, F6 turns that
     back into real tilt aiming.
   - Bindings: E:\Entertaiment\shadPS4-user\input_config\global.ini (`motion_shake = g`).
+
+## FixBuild (2026-10-07)
+
+- [rayhlancaner-png/shadPS4-Infamous-FixBuild](https://github.com/rayhlancaner-png/shadPS4-Infamous-FixBuild)
+  is an inFAMOUS-specific shadPS4 fork with ~70 commits that cut per-draw work on the GPU thread.
+  Built from source (`build-fixbuild.bat`, branch `local` = 1.0.16 + the torn-jump crash fix) into
+  E:\Entertaiment\shadPS4-FixBuild with its own portable `user\` folder (copy of the save, vblank 144).
+  Desktop shortcut "inFAMOUS FixBuild".
+- A/B, same save and scene, both native 1080p, alternating (`tools\ab-fixbuild.ps1`):
+  own 49.6 / 49.6 fps, FixBuild **73.0 / 71.7** fps (5% low 46 vs 67-70), same ~3,800 draws/frame.
+- Dynamic quality patch on/off: no change in draws or fps (drift between runs is bigger: 48 -> 38
+  fps over 9 minutes of benches, the laptop heating up).
+- Profile of the own build's GPU thread (`tools\sampler.exe`, opening scene): BindResources 28%
+  (ObtainBuffer 19%), pipeline lookup 12%, memory sync 8%. Page faults ~100k/s, protect ~240 ms/s,
+  readback stalls ~340 ms/s.
+- Missing in FixBuild vs own build: Tweaks tab, touch mode / stick motion, shader overlay count,
+  ultrawide patches (untested there), Big Picture rescan.

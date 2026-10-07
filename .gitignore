@@ -1,2 +1,5 @@
 perf-logs/
 build*.log
+logs/
+perf-logs/
+tools/*.exe

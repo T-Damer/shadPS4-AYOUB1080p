@@ -303,7 +303,9 @@ const commands = {
     const dir = path.join(HERE, 'perf-logs');
     fs.mkdirSync(dir, { recursive: true });
     const out = path.join(dir, `bench-${name}.txt`);
-    fs.copyFileSync(path.join(cfg.userDir, 'log', 'shad_log.txt'), out);
+    // A build with a portable user\ folder next to its exe logs there.
+    const portable = path.join(path.dirname(exe), 'user');
+    fs.copyFileSync(path.join(fs.existsSync(portable) ? portable : cfg.userDir, 'log', 'shad_log.txt'), out);
     console.log(perf.format(perf.summarize(fs.readFileSync(out, 'utf8'))));
   },
 
