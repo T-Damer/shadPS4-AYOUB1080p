@@ -25,6 +25,7 @@
 #include "common/memory_patcher.h"
 #include "common/ntapi.h"
 #include "common/path_util.h"
+#include "common/perf_stats.h"
 #include "common/polyfill_thread.h"
 #include "common/scm_rev.h"
 #include "common/singleton.h"
@@ -521,6 +522,11 @@ void Emulator::Run(std::filesystem::path file, std::vector<std::string> args,
     LOG_INFO(Config, "Total RAM: {} GB", std::round(ram.total_Bytes() / pow(1024, 3)));
     LOG_INFO(Config, "Operating System: {}", os.name());
     Core::PerfSampler::ApplyGameProfile(id);
+    if (EmulatorSettings.IsSmoothShaderCompilation()) {
+        // Per game setting: compute pipelines are compiled in the background too.
+        Common::Perf::GetTuning().async_pipelines.store(2, std::memory_order_relaxed);
+        LOG_INFO(Config, "Smooth shader compilation: compute pipelines compiled in the background");
+    }
     Core::PerfSampler::Start();
     // Tuning read once before the renderer starts (some settings only apply at startup).
     Core::PerfSampler::PollTuning();
