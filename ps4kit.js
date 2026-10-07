@@ -216,8 +216,11 @@ const commands = {
    * compares fps and the load of the emulator's GPU thread. Stand still in a busy place.
    */
   async abtest({ flags }) {
+    const relaxed = (readTuning().match(/^readback_relaxed_sites\s*=\s*(.+)$/m) || [])[1] || 'none';
     const variants = [
       ['baseline', {}],
+      // eboot.bin+0x171700 sums an array of floats the GPU wrote, read back every frame
+      ['relax 171700', { readback_relaxed_sites: `${relaxed === 'none' ? '' : relaxed + ', '}171700` }],
       ['scout', { scout: 1 }],
       ['scout+fast', { scout: 1, scout_fast: 1 }],
       ['gpu priority', { gpu_threads_priority: 2 }],
@@ -228,7 +231,7 @@ const commands = {
     const seconds = Number(flags.seconds || 25);
     const log = path.join(cfg.userDir, 'log', 'shad_log.txt');
     const saved = readTuning();
-    const reset = { scout: 0, scout_fast: 0, gpu_threads_priority: 0, hot_page_faults: 0, asc_queue: 0 };
+    const reset = { scout: 0, scout_fast: 0, gpu_threads_priority: 0, hot_page_faults: 0, asc_queue: 0, readback_relaxed_sites: relaxed };
     const rows = [];
     console.log(`A/B test: ${variants.length} variants x ${seconds + 5} s. Keep the camera still.`);
     try {
@@ -245,9 +248,10 @@ const commands = {
         const { seconds: secs, threads } = perf.parse(buf.toString('utf8'));
         const avg = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : NaN);
         const cp = threads.get('shadPS4:GpuCommandProcessor');
-        const row = { name, fps: avg(secs.map((s) => s.fps)), work: avg(secs.map((s) => s.cpWork)), cp: cp ? avg(cp.samples) : NaN, over33: secs.reduce((x, s) => x + s.over33, 0) };
+        const row = { name, fps: avg(secs.map((s) => s.fps)), work: avg(secs.map((s) => s.cpWork)), cp: cp ? avg(cp.samples) : NaN,
+          over33: secs.reduce((x, s) => x + s.over33, 0), rb: avg(secs.map((s) => s.readbackStallMs || 0)) };
         rows.push(row);
-        console.log(`  ${name.padEnd(16)} ${row.fps.toFixed(1).padStart(5)} fps  GPU thread work ${row.work.toFixed(0).padStart(3)}%  CPU ${row.cp.toFixed(0).padStart(3)}%  frames>33ms ${row.over33}`);
+        console.log(`  ${name.padEnd(16)} ${row.fps.toFixed(1).padStart(5)} fps  GPU thread work ${row.work.toFixed(0).padStart(3)}%  CPU ${row.cp.toFixed(0).padStart(3)}%  readback stall ${row.rb.toFixed(0).padStart(4)} ms/s  frames>33ms ${row.over33}`);
       }
     } finally {
       fs.writeFileSync(tuningPath(), saved ? saved + '\n' : '');
