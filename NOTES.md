@@ -27,6 +27,20 @@ cache. First 20 s skipped.
   the cache is warm - first visits to new areas still stutter while it fills).
 - **Crash:** 1 of 6 boots of the release build crashed while loading (JobWorker5 jumped to an
   invalid address, `access=execute`). Not seen with the own build so far; if it happens, relaunch.
+- **Gameplay (city, live capture 2026-10-07):** ~3,400 draws/frame (the intro bench has ~1,300).
+  The emulator's GPU thread is 97-99% busy at 60 fps, so it is the ceiling: raising
+  `vblank_frequency` above 60 can only help indoors/cutscenes, not in the city. 240 fps is out of
+  reach on this CPU.
+- **"Lag on new scenes":** hitches of 0.6-1.2 s, all from pipeline compilation (up to 14 new
+  pipelines in one second), the first time an area / effect is seen. Graphics pipelines compile in
+  the background, compute pipelines block (the inFAMOUS profile sets `async_pipelines = 1`; the
+  emulator default 2 was turned off by the fork author for this game). They are cached: the same
+  place does not hitch again. Experiment: `ps4kit tune async_pipelines=2` (compute in background
+  too; risk: effects missing / flickering for a moment while they compile).
+- **Ultrawide:** presets `ultrawide` / `pro-ultrawide` render and output 3456x1440 (21:9; 3456 =
+  3440 aligned to 128 px). The game has no hard-coded 16:9 constant, so the camera is expected to
+  widen (hor+); HUD may stretch. Unverified visually. Patch file backup:
+  `inFAMOUS Second Son.xml.before-ultrawide`.
 - **Display:** the external monitor is on the RTX 4060, the laptop panel on the AMD iGPU. Play on
   the external monitor; on the laptop panel every frame is copied between GPUs.
 

@@ -151,6 +151,9 @@ const commands = {
       pro1440: { neo: true, on: ['PS4 Pro mode: native 2560x1440 without checkerboard'] },
       pro1800: { neo: true, on: ['PS4 Pro mode: native 3200x1800 without checkerboard'] },
       pro2160: { neo: true, on: ['PS4 Pro mode: native 3840x2160 without checkerboard'] },
+      // 21:9 (3456x1440), patches added by ps4kit to the fork's patch file
+      ultrawide: { neo: false, on: ['Ultrawide 3456x1440 21:9 (render and output)'] },
+      'pro-ultrawide': { neo: true, on: ['PS4 Pro mode: ultrawide 3456x1440 21:9 without checkerboard'] },
     };
     const RES = Object.values(PRESETS).flatMap((p) => p.on);
     const xmlPath = path.join(cfg.userDir, cfg.patchFile);
@@ -164,6 +167,7 @@ const commands = {
       console.log(`Current: ${current}\nAvailable: ${Object.keys(PRESETS).join(', ')}`);
       console.log('  1080p/1440p/2160p: base PS4 mode at that resolution (lighter)');
       console.log('  pro*: PS4 Pro mode (extra Pro effects) at that resolution');
+      console.log('  ultrawide / pro-ultrawide: 21:9 at 3456x1440 (experimental)');
       return;
     }
     const p = PRESETS[pos[0]];
