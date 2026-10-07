@@ -14,6 +14,7 @@
 #include "core/emulator_state.h"
 #include "imgui/imgui_std.h"
 #include "imgui_internal.h"
+#include "input/input_mouse.h"
 #include "options.h"
 #include "video_core/renderer_vulkan/vk_presenter.h"
 #include "widget/frame_dump.h"
@@ -508,6 +509,37 @@ void L::Draw() {
             }
             End();
         }
+    }
+
+    if (const auto touch = Input::GetTouchView(); touch.active) {
+        // Touch mode indicator: the emulated touchpad and the fingers on it.
+        const ImGuiViewport* viewport = GetMainViewport();
+        const float pad_width = std::min(viewport->WorkSize.x * 0.25f, 420.0f);
+        const float pad_height = pad_width * 0.45f;
+        SetNextWindowPos(ImVec2(viewport->WorkPos.x + viewport->WorkSize.x * 0.5f,
+                                viewport->WorkPos.y + viewport->WorkSize.y - 20.0f),
+                         ImGuiCond_Always, ImVec2(0.5f, 1.0f));
+        SetNextWindowBgAlpha(0.35f);
+        if (Begin("Touch Mode", nullptr,
+                  ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoDecoration |
+                      ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoDocking |
+                      ImGuiWindowFlags_NoInputs)) {
+            Text("Touch mode - sticks: fingers, Cross: click, Select: exit");
+            const ImVec2 origin = GetCursorScreenPos();
+            const ImVec2 corner(origin.x + pad_width, origin.y + pad_height);
+            ImDrawList* draw = GetWindowDrawList();
+            draw->AddRectFilled(origin, corner, IM_COL32(255, 255, 255, 45), 10.0f);
+            draw->AddRect(origin, corner, IM_COL32(255, 255, 255, 160), 10.0f, 0, 2.0f);
+            for (int i = 0; i < 2; ++i) {
+                if (touch.down[i]) {
+                    draw->AddCircleFilled(ImVec2(origin.x + touch.x[i] * pad_width,
+                                                 origin.y + touch.y[i] * pad_height),
+                                          pad_height * 0.09f, IM_COL32(90, 175, 255, 230));
+                }
+            }
+            Dummy(ImVec2(pad_width, pad_height));
+        }
+        End();
     }
 
     PopID();
