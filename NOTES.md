@@ -47,6 +47,10 @@ cache. First 20 s skipped.
   down): none is worth enabling. The CPU averaged ~3.4 GHz (107% of base) while the 7735H can
   boost one core to ~4.75 GHz. Windows plan already has boost Aggressive, EPP 25, min 80%.
   Machenike L16P: its performance/turbo mode (Control Center / Fn hotkey) is the remaining lever.
+  Rerun in Turbo: baselines 50.1 / 49.7 (no more drift), options 48.4-51.1: still nothing to gain;
+  the CPU still averages ~108% of base clock. ~50 fps is the city ceiling on this laptop.
+- Frame cap: `ps4kit fps 144` (vblank_frequency 144 for inFAMOUS, 2026-10-07) to go above 60 in
+  lighter scenes. Check the game does not run too fast; `ps4kit fps 60` to undo.
 - **Display:** the external monitor is on the RTX 4060, the laptop panel on the AMD iGPU. Play on
   the external monitor; on the laptop panel every frame is copied between GPUs.
 
