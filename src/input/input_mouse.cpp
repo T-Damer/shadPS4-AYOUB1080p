@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2024-2026 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <atomic>
 #include <cmath>
 
 #include "common/assert.h"
@@ -29,8 +30,17 @@ bool motion_shake = false;
 bool motion_shake_was_active = false;
 u32 motion_shake_phase = 0;
 float mouse_gyro_last_velocity[2] = {0.0f, 0.0f};
-bool stick_to_gyro = false;
-bool stick_to_gyro_was_active = false;
+// Motion from the right stick, on by default for controllers without motion sensors.
+std::atomic<bool> stick_motion_enabled{true};
+bool stick_motion_was_active = false;
+float stick_motion_last[2] = {0.0f, 0.0f};
+// touchpad_swipe binding: held, the sticks drag a finger on the touchpad; a short tap clicks it.
+std::atomic<bool> swipe_held{false};
+std::atomic<bool> swipe_release_pending{false};
+std::atomic<u64> swipe_start_ms{0};
+bool swipe_moved = false;
+int touchpad_click_pulse = 0;
+float swipe_position[2] = {0.5f, 0.5f};
 
 // Switches mouse to a set mode or turns mouse emulation off if it was already in that mode.
 // Returns whether the mode is turned on.
@@ -62,8 +72,19 @@ void SetMotionShake(bool active) {
 }
 
 void ToggleStickToGyro() {
-    stick_to_gyro = !stick_to_gyro;
-    LOG_INFO(Input, "Right stick to gyro {}", stick_to_gyro ? "on" : "off");
+    stick_motion_enabled = !stick_motion_enabled;
+    LOG_INFO(Input, "Motion from the right stick (controllers without motion sensors) {}",
+             stick_motion_enabled ? "on" : "off");
+}
+
+void SetTouchpadSwipe(bool held) {
+    if (held) {
+        swipe_start_ms = SDL_GetTicks();
+        swipe_held = true;
+    } else if (swipe_held) {
+        swipe_held = false;
+        swipe_release_pending = true;
+    }
 }
 
 void EmulateJoystick(GameController* controller, u32 interval) {
@@ -175,35 +196,89 @@ static bool EmulateShake(GameController* controller) {
     return true;
 }
 
-// hotkey_toggle_stick_to_gyro: the right stick turns the controller (pitch and yaw), for games
-// aimed by tilting it, played with a pad without motion sensors. Full deflection: 3 rad/s.
-static bool EmulateGyroFromStick(GameController* controller) {
-    if (!stick_to_gyro) {
-        if (stick_to_gyro_was_active) {
-            stick_to_gyro_was_active = false;
+static float StickDeflection(const State& state, Axis axis) {
+    const float v = (state.axes[std::to_underlying(axis)] - 128) / 127.0f;
+    return std::abs(v) < 0.1f ? 0.0f : std::clamp(v, -1.0f, 1.0f);
+}
+
+// Controllers without motion sensors (XInput pads, keyboard): the right stick also moves the
+// controller, so games aimed or shaken by motion need no extra button. Its deflection turns the
+// controller (pitch and yaw, up to 3 rad/s), and moving it quickly (wiggling it back and forth)
+// gives linear acceleration, which games read as a shake. Games ignore motion outside the
+// moments they ask for it. hotkey_toggle_stick_to_gyro turns this off and on.
+static void EmulateMotionFromStick(GameController* controller, u32 interval) {
+    const bool active = stick_motion_enabled && !controller->has_motion_sensors;
+    if (!active) {
+        if (stick_motion_was_active) {
+            stick_motion_was_active = false;
             const float still[3] = {0.0f, 0.0f, 0.0f};
+            controller->UpdateAcceleration(constant_down_accel);
             controller->UpdateGyro(still);
         }
-        return false;
+        return;
     }
-    stick_to_gyro_was_active = true;
+    stick_motion_was_active = true;
     const auto state = controller->ReadState();
-    const auto deflection = [&](Axis axis) {
-        const float v = (state.axes[std::to_underlying(axis)] - 128) / 127.0f;
-        return std::abs(v) < 0.1f ? 0.0f : std::clamp(v, -1.0f, 1.0f);
-    };
+    const float dx = StickDeflection(state, Axis::RightX);
+    const float dy = StickDeflection(state, Axis::RightY);
     constexpr float max_rate = 3.0f;
-    const float gyro[3] = {-deflection(Axis::RightY) * max_rate,
-                           -deflection(Axis::RightX) * max_rate, 0.0f};
-    controller->UpdateAcceleration(constant_down_accel);
+    const float gyro[3] = {-dy * max_rate, -dx * max_rate, 0.0f};
+    // A full flick of the stick within one 33 ms poll gives about 3 g.
+    const float seconds = std::max(interval, 1u) / 1000.0f;
+    constexpr float deflection_to_accel = 1.0f;
+    const float accel[3] = {std::clamp((dx - stick_motion_last[0]) / seconds * deflection_to_accel,
+                                       -max_accel, max_accel),
+                            constant_down_accel[1] + std::clamp((dy - stick_motion_last[1]) /
+                                                                    seconds * deflection_to_accel,
+                                                                -max_accel, max_accel),
+                            0.0f};
+    stick_motion_last[0] = dx;
+    stick_motion_last[1] = dy;
+    controller->UpdateAcceleration(accel);
     controller->UpdateGyro(gyro);
-    return true;
+}
+
+// touchpad_swipe: for controllers without a touchpad. While held, a finger touches the touchpad
+// and follows the stick pushed furthest (centre at rest), so a stick movement is a swipe. A short
+// tap without moving a stick clicks the touchpad instead.
+static void EmulateTouchpadSwipe(GameController* controller) {
+    using Libraries::Pad::OrbisPadButtonDataOffset;
+    if (swipe_held) {
+        const auto state = controller->ReadState();
+        float x = StickDeflection(state, Axis::RightX), y = StickDeflection(state, Axis::RightY);
+        const float lx = StickDeflection(state, Axis::LeftX),
+                    ly = StickDeflection(state, Axis::LeftY);
+        if (lx * lx + ly * ly > x * x + y * y) {
+            x = lx;
+            y = ly;
+        }
+        if (x * x + y * y > 0.09f) {
+            swipe_moved = true;
+        }
+        swipe_position[0] = 0.5f + x * 0.45f;
+        swipe_position[1] = 0.5f + y * 0.45f;
+        controller->SetTouchpadState(0, true, swipe_position[0], swipe_position[1]);
+    } else if (swipe_release_pending.exchange(false)) {
+        controller->SetTouchpadState(0, false, swipe_position[0], swipe_position[1]);
+        if (!swipe_moved && SDL_GetTicks() - swipe_start_ms < 300) {
+            touchpad_click_pulse = 2;
+        }
+        swipe_moved = false;
+    }
+    if (touchpad_click_pulse > 0) {
+        controller->Button(OrbisPadButtonDataOffset::TouchPad, touchpad_click_pulse == 2);
+        --touchpad_click_pulse;
+    }
 }
 
 Uint32 MousePolling(void* param, Uint32 id, Uint32 interval) {
     auto* controller = (GameController*)param;
-    if (EmulateShake(controller) || EmulateGyroFromStick(controller)) {
+    EmulateTouchpadSwipe(controller);
+    if (EmulateShake(controller)) {
         return interval;
+    }
+    if (mouse_mode != MouseMode::Gyro) {
+        EmulateMotionFromStick(controller, interval);
     }
     switch (mouse_mode) {
     case MouseMode::Joystick:
