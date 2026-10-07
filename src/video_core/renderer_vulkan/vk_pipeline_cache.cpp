@@ -62,6 +62,7 @@ public:
             std::scoped_lock lk{mutex};
             queue.push_back(pipeline);
             ++pending;
+            Common::Perf::PipelinesCompiling().store(pending, std::memory_order_relaxed);
         }
         work_cv.notify_one();
     }
@@ -105,6 +106,7 @@ private:
             {
                 std::scoped_lock lk{mutex};
                 --pending;
+                Common::Perf::PipelinesCompiling().store(pending, std::memory_order_relaxed);
             }
             done_cv.notify_all();
         }

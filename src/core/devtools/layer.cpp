@@ -7,6 +7,7 @@
 #include <imgui.h>
 
 #include "SDL3/SDL_log.h"
+#include "common/perf_stats.h"
 #include "common/singleton.h"
 #include "common/types.h"
 #include "core/debug_state.h"
@@ -506,6 +507,31 @@ void L::Draw() {
                              ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoDecoration |
                                  ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoDocking)) {
                 Text("Volume: %d", EmulatorSettings.GetVolumeSlider());
+            }
+            End();
+        }
+    }
+
+    if (EmulatorSettings.IsSmoothShaderCompilation()) {
+        // Smooth shader compilation: a discreet note in the corner while effects compile (held a
+        // second after the last one, so it does not flicker).
+        static double compiling_until = 0.0;
+        const u32 compiling = Common::Perf::PipelinesCompiling().load(std::memory_order_relaxed);
+        if (compiling > 0) {
+            compiling_until = GetTime() + 1.0;
+        }
+        if (GetTime() < compiling_until) {
+            const ImGuiViewport* viewport = GetMainViewport();
+            SetNextWindowPos(ImVec2(viewport->WorkPos.x + 8.0f,
+                                    viewport->WorkPos.y + viewport->WorkSize.y - 8.0f),
+                             ImGuiCond_Always, ImVec2(0.0f, 1.0f));
+            SetNextWindowBgAlpha(0.3f);
+            if (Begin("Shader Compilation", nullptr,
+                      ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoDecoration |
+                          ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoDocking |
+                          ImGuiWindowFlags_NoInputs)) {
+                SetWindowFontScale(0.8f);
+                Text("Compiling shaders in background");
             }
             End();
         }
