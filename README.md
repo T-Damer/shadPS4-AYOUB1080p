@@ -8,7 +8,7 @@ ps4kit info <pkg>...                 what a PKG is and where it extracts to
 ps4kit extract <pkg>... [--to dir]   extract game / update / DLC PKGs
 ps4kit verify <pkg> [dir] [--deep]   compare an extracted folder with its PKG
 ps4kit preset [name]                 resolution preset: 1080p 1440p 2160p pro1080 pro1440 pro1800 pro2160
-ps4kit launch [--perf] [--build b]   start the game (b: release, dev, znver3)
+ps4kit launch [--perf] [--build b]   start the game (b: own, release, fresh)
 ps4kit perf [log]                    summarise the performance logging of the last session
 ps4kit bench <name> [--build b] [key=value]...   unattended 3 min run from boot + summary (A/B tests)
 ps4kit tune [key=value]...           show or change perf_tuning.ini (live while the game runs)
@@ -40,10 +40,10 @@ Findings on this laptop (Ryzen 7 7735H, RTX 4060 Laptop) are in `NOTES.md`.
 
 The emulator reads motion through SDL3. Flydigi Vader 3 Pro / 4 Pro / 5 Pro and Apex 5 report gyro
 and accelerometer in their D-input mode; XInput (Xbox 360) mode reports none. Without sensors, the
-own build (`--build dev` / `znver3`) adds `motion_shake` (hold `G` to shake) and accelerometer
+own build adds `motion_shake` (hold `G` to shake), stick-to-gyro (`T`: aim with the right stick) and accelerometer
 output for mouse-to-gyro (F6). See `NOTES.md`.
 
 ## Building the emulator
 
-`build-emulator.bat` (plain Release) or `build-emulator-znver3.bat` (LTO, `-march=znver3`).
+`build-emulator.bat` (Release + ThinLTO, `-mtune=znver3`), installs to `E:\Entertaiment\shadPS4-own`.
 Needs VS 2022 Build Tools (C++ and Clang) and Python 3.12.

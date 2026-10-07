@@ -30,10 +30,19 @@ cache. First 20 s skipped.
 - **Display:** the external monitor is on the RTX 4060, the laptop panel on the AMD iGPU. Play on
   the external monitor; on the laptop panel every frame is copied between GPUs.
 
-## Controller (Flydigi, 2.4G dongle)
+- **Audio crash:** once, after ~15 min of play, SDL's own playback thread (`SDLAudioP103`) crashed
+  in a memcpy to address 0x20 (inside SDL, Default Device, 8ch -> stereo downmix). No Windows device
+  event at that time. If it happens again: note what the audio device was doing (headset sleep?),
+  and try `audio_backend` 1 (OpenAL) in config.json.
 
-- The dongle runs in XInput (Xbox 360) mode: `USB\VID_045E&PID_028E\FLYDIGI_2.4G_X360`. XInput has
-  no motion data, so the emulator logs `Failed to initialize gyro controls` / `accel controls`.
+## Controller: Flydigi Vader 2 (Space Station model code f1), 2.4G dongle
+
+- The Vader 2 has a gyro, but SDL3's Flydigi driver does not expose it as motion (only as "gyro
+  mouse"), and the dongle runs in XInput (Xbox 360) mode: `USB\VID_045E&PID_028E\FLYDIGI_2.4G_X360`.
+  XInput has no motion data, so the emulator logs `Failed to initialize gyro controls` / `accel controls`.
+- Real tilt aiming is still possible: Space Station -> motion sensing -> map to mouse, then F6 in
+  the game turns mouse movement back into gyro (and fast movement into shake).
+- Simplest: **T** toggles stick-to-gyro (right stick aims the spray can), **hold G** to shake.
 - SDL3 (inside the emulator) reads gyro + accelerometer natively from the Flydigi Vader 3 Pro,
   Vader 4 Pro, Vader 5 Pro and Apex 5 in their D-input mode (USB VID 04B4 or 37D7). Apex 4 and
   Vader 2 only report motion in gyro-mouse mode; older models none. If the pad supports it, switch
