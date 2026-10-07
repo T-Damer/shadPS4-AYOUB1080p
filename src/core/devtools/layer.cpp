@@ -531,7 +531,11 @@ void L::Draw() {
                           ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoDocking |
                           ImGuiWindowFlags_NoInputs)) {
                 SetWindowFontScale(0.8f);
-                Text("Compiling shaders in background");
+                if (compiling > 0) {
+                    Text("Compiling shaders in background: %u left", compiling);
+                } else {
+                    Text("Shaders compiled");
+                }
             }
             End();
         }
