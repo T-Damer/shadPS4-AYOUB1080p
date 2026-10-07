@@ -24,6 +24,10 @@ float mouse_deadzone_offset = 0.5, mouse_speed = 1, mouse_speed_offset = 0.1250;
 bool mouse_gyro_roll_mode = false;
 Uint32 mouse_polling_id = 0;
 MouseMode mouse_mode = MouseMode::Off;
+bool motion_shake = false;
+bool motion_shake_was_active = false;
+u32 motion_shake_phase = 0;
+float mouse_gyro_last_velocity[2] = {0.0f, 0.0f};
 
 // Switches mouse to a set mode or turns mouse emulation off if it was already in that mode.
 // Returns whether the mode is turned on.
@@ -48,6 +52,10 @@ void SetMouseParams(float mdo, float ms, float mso) {
 
 void SetMouseGyroRollMode(bool mode) {
     mouse_gyro_roll_mode = mode;
+}
+
+void SetMotionShake(bool active) {
+    motion_shake = active;
 }
 
 void EmulateJoystick(GameController* controller, u32 interval) {
@@ -86,10 +94,25 @@ void EmulateJoystick(GameController* controller, u32 interval) {
 }
 
 constexpr float constant_down_accel[3] = {0.0f, 9.81f, 0.0f};
+constexpr float max_accel = 4.0f * 9.81f;
 void EmulateGyro(GameController* controller, u32 interval) {
     float d_x = 0, d_y = 0;
     SDL_GetRelativeMouseState(&d_x, &d_y);
-    controller->UpdateAcceleration(constant_down_accel);
+    // Moving the mouse back and forth quickly also moves the controller: the change of mouse
+    // velocity becomes linear acceleration, so games detecting a shake see one.
+    const float seconds = std::max(interval, 1u) / 1000.0f;
+    const float velocity[2] = {d_x / seconds, d_y / seconds};
+    constexpr float px_to_accel = 4.5e-4f; // a brisk mouse shake gives about 3 g
+    float accel[3] = {
+        std::clamp((velocity[0] - mouse_gyro_last_velocity[0]) / seconds * px_to_accel, -max_accel,
+                   max_accel),
+        constant_down_accel[1] +
+            std::clamp((velocity[1] - mouse_gyro_last_velocity[1]) / seconds * px_to_accel,
+                       -max_accel, max_accel),
+        0.0f};
+    mouse_gyro_last_velocity[0] = velocity[0];
+    mouse_gyro_last_velocity[1] = velocity[1];
+    controller->UpdateAcceleration(accel);
     float gyro_from_mouse[3] = {-d_y / 100, -d_x / 100, 0.0f};
     if (mouse_gyro_roll_mode) {
         gyro_from_mouse[1] = 0.0f;
@@ -123,8 +146,32 @@ void ApplyMouseInputBlockers() {
     }
 }
 
+// Held motion_shake binding: the controller is shaken up and down about 7 times a second
+// (acceleration and rotation alternate every two polls of 33 ms), like a spray can.
+static bool EmulateShake(GameController* controller) {
+    if (!motion_shake) {
+        if (motion_shake_was_active) {
+            motion_shake_was_active = false;
+            const float still[3] = {0.0f, 0.0f, 0.0f};
+            controller->UpdateAcceleration(constant_down_accel);
+            controller->UpdateGyro(still);
+        }
+        return false;
+    }
+    motion_shake_was_active = true;
+    const float sign = (motion_shake_phase++ / 2) % 2 == 0 ? 1.0f : -1.0f;
+    const float accel[3] = {0.0f, constant_down_accel[1] + sign * 2.5f * 9.81f, 0.0f};
+    const float gyro[3] = {sign * 6.0f, 0.0f, 0.0f};
+    controller->UpdateAcceleration(accel);
+    controller->UpdateGyro(gyro);
+    return true;
+}
+
 Uint32 MousePolling(void* param, Uint32 id, Uint32 interval) {
     auto* controller = (GameController*)param;
+    if (EmulateShake(controller)) {
+        return interval;
+    }
     switch (mouse_mode) {
     case MouseMode::Joystick:
         EmulateJoystick(controller, interval);
