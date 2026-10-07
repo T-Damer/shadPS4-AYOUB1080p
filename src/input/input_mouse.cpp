@@ -4,6 +4,7 @@
 #include <cmath>
 
 #include "common/assert.h"
+#include "common/logging/log.h"
 #include "common/types.h"
 #include "input/controller.h"
 #include "input/input_handler.h"
@@ -28,6 +29,8 @@ bool motion_shake = false;
 bool motion_shake_was_active = false;
 u32 motion_shake_phase = 0;
 float mouse_gyro_last_velocity[2] = {0.0f, 0.0f};
+bool stick_to_gyro = false;
+bool stick_to_gyro_was_active = false;
 
 // Switches mouse to a set mode or turns mouse emulation off if it was already in that mode.
 // Returns whether the mode is turned on.
@@ -56,6 +59,11 @@ void SetMouseGyroRollMode(bool mode) {
 
 void SetMotionShake(bool active) {
     motion_shake = active;
+}
+
+void ToggleStickToGyro() {
+    stick_to_gyro = !stick_to_gyro;
+    LOG_INFO(Input, "Right stick to gyro {}", stick_to_gyro ? "on" : "off");
 }
 
 void EmulateJoystick(GameController* controller, u32 interval) {
@@ -167,9 +175,34 @@ static bool EmulateShake(GameController* controller) {
     return true;
 }
 
+// hotkey_toggle_stick_to_gyro: the right stick turns the controller (pitch and yaw), for games
+// aimed by tilting it, played with a pad without motion sensors. Full deflection: 3 rad/s.
+static bool EmulateGyroFromStick(GameController* controller) {
+    if (!stick_to_gyro) {
+        if (stick_to_gyro_was_active) {
+            stick_to_gyro_was_active = false;
+            const float still[3] = {0.0f, 0.0f, 0.0f};
+            controller->UpdateGyro(still);
+        }
+        return false;
+    }
+    stick_to_gyro_was_active = true;
+    const auto state = controller->ReadState();
+    const auto deflection = [&](Axis axis) {
+        const float v = (state.axes[std::to_underlying(axis)] - 128) / 127.0f;
+        return std::abs(v) < 0.1f ? 0.0f : std::clamp(v, -1.0f, 1.0f);
+    };
+    constexpr float max_rate = 3.0f;
+    const float gyro[3] = {-deflection(Axis::RightY) * max_rate,
+                           -deflection(Axis::RightX) * max_rate, 0.0f};
+    controller->UpdateAcceleration(constant_down_accel);
+    controller->UpdateGyro(gyro);
+    return true;
+}
+
 Uint32 MousePolling(void* param, Uint32 id, Uint32 interval) {
     auto* controller = (GameController*)param;
-    if (EmulateShake(controller)) {
+    if (EmulateShake(controller) || EmulateGyroFromStick(controller)) {
         return interval;
     }
     switch (mouse_mode) {
