@@ -11,6 +11,7 @@ if (-not (git -C $repo remote | Select-String -SimpleMatch 'fork')) { git -C $re
 git -C $repo fetch origin
 foreach ($b in $branches) {
     git -C $repo push -u fork $b
+    if ($LASTEXITCODE -ne 0) { throw "push of $b failed (not signed in to GitHub?)" }
     $url = "https://github.com/weshayoub92/shadPS4-AYOUB1080p/compare/main...T-Damer:shadPS4-AYOUB1080p:$($b)?expand=1"
     Write-Host "Open the pull request: $url"
     Start-Process $url
