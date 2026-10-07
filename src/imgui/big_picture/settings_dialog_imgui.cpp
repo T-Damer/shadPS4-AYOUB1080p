@@ -1,15 +1,19 @@
 //  SPDX-FileCopyrightText: Copyright 2025 shadPS4 Emulator Project
 //  SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <fstream>
 #include <map>
 #include <ranges>
 #include <ImGuiFileDialog.h>
 #include <cmrc/cmrc.hpp>
+#include <nlohmann/json.hpp>
+#include <pugixml.hpp>
 #include <stb_image.h>
 
 #include "common/elf_info.h"
 #include "common/logging/log.h"
 #include "common/path_util.h"
+#include "common/perf_stats.h"
 #include "core/cpu_patches.h"
 #include "core/devtools/layer.h"
 #include "imgui/imgui_std.h"
@@ -91,6 +95,11 @@ void SettingsWindow::LoadSettings(std::string profile) {
         pipelineCacheArchiveSetting = EmulatorSettings.IsPipelineCacheArchived();
         extraDmemSetting = EmulatorSettings.GetExtraDmemInMBytes();
         vblankFrequencySetting = EmulatorSettings.GetVblankFrequency();
+
+        /////////// Tweaks Tab
+        stickMotionSetting = EmulatorSettings.IsStickMotionEnabled();
+        smoothShaderCompilationSetting = EmulatorSettings.IsSmoothShaderCompilation();
+        LoadGamePatches(profile.substr(0, 9));
     }
 }
 
@@ -148,6 +157,15 @@ void SettingsWindow::SaveSettings(std::string profile) {
         EmulatorSettings.SetPipelineCacheArchived(pipelineCacheArchiveSetting, true);
         EmulatorSettings.SetExtraDmemInMBytes(extraDmemSetting, true);
         EmulatorSettings.SetVblankFrequency(vblankFrequencySetting, true);
+
+        /////////// Tweaks Tab
+        EmulatorSettings.SetStickMotionEnabled(stickMotionSetting, true);
+        EmulatorSettings.SetSmoothShaderCompilation(smoothShaderCompilationSetting, true);
+        if (smoothShaderCompilationSetting && isGameRunning) {
+            // Takes effect at once; turning it off needs a restart of the game.
+            Common::Perf::GetTuning().async_pipelines.store(2, std::memory_order_relaxed);
+        }
+        SaveGamePatches();
     }
 
     isSpecific ? EmulatorSettings.Save(profile) : EmulatorSettings.Save();
@@ -285,7 +303,7 @@ void SettingsWindow::SetupWindow() {
     SettingsCategory firstCategory =
         isGameRunning ? SettingsCategory::General : SettingsCategory::Profiles;
     SettingsCategory lastCategory =
-        currentProfile != "Global" ? SettingsCategory::Experimental : SettingsCategory::Log;
+        currentProfile != "Global" ? SettingsCategory::Tweaks : SettingsCategory::Log;
 
     // Navigate categories with Tab / R1 / L1
     if (ImGui::IsKeyPressed(ImGuiKey_GamepadR1) || ImGui::IsKeyPressed(ImGuiKey_Tab)) {
@@ -333,6 +351,7 @@ void SettingsWindow::DrawCategoryTabs() {
 
     if (currentProfile != "Global") {
         AddCategory("Experimental", experimentalTexture, SettingsCategory::Experimental);
+        AddCategory("Tweaks", generalTexture, SettingsCategory::Tweaks);
     }
 
     ImGui::PopStyleVar();
@@ -775,10 +794,146 @@ void SettingsWindow::DrawSettingsTable(SettingsCategory category) {
 
             ImGui::EndTable();
         }
+    } else if (category == SettingsCategory::Tweaks) {
+        if (ImGui::BeginTable("SettingsTable", 2)) {
+            ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, 500.0f * uiScale);
+            ImGui::TableSetupColumn("Value");
+
+            if (resolutionOptions.size() > 1) {
+                const int previous = resolutionSetting;
+                AddSettingCombo("Resolution (game patch)", resolutionSetting, resolutionOptions);
+                if (resolutionSetting != previous && resolutionSetting > 0) {
+                    // Patches named "PS4 Pro mode: ..." need the Pro mode, the others the base
+                    // mode.
+                    neoModeSetting =
+                        resolutionOptions[resolutionSetting].starts_with("PS4 Pro mode");
+                }
+            }
+            for (auto& patch : gamePatches) {
+                if (!patch.resolution) {
+                    AddSettingCheckbox(patch.name, patch.enabled);
+                }
+            }
+            AddSettingCheckbox(
+                "Motion From the Right Stick When the Controller Has None (aim, shake)",
+                stickMotionSetting);
+            AddSettingCheckbox("Smooth Shader Compilation (effects appear once compiled)",
+                               smoothShaderCompilationSetting);
+
+            ImGui::EndTable();
+        }
+        ImGui::TextWrapped("Game patches apply at the next start of the game.");
     }
 
     ImGui::PopStyleVar();
     ImGui::EndChild();
+}
+
+// "1920x1080" style resolution in a patch name.
+static bool NameHasResolution(const std::string& name) {
+    for (size_t x = name.find('x'); x != std::string::npos; x = name.find('x', x + 1)) {
+        size_t left = 0, right = 0;
+        while (left < x && std::isdigit(static_cast<unsigned char>(name[x - 1 - left]))) {
+            ++left;
+        }
+        while (x + 1 + right < name.size() &&
+               std::isdigit(static_cast<unsigned char>(name[x + 1 + right]))) {
+            ++right;
+        }
+        if (left >= 3 && right >= 3) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// The patch files of the game: each folder of the patches directory lists its files and the
+// serials they apply to in files.json, like the patcher reads them at game start.
+void SettingsWindow::LoadGamePatches(const std::string& serial) {
+    gamePatches.clear();
+    resolutionOptions = {"Game default"};
+    resolutionSetting = 0;
+    const auto patch_dir = Common::FS::GetUserPath(Common::FS::PathType::PatchesDir);
+    std::error_code ec;
+    if (!std::filesystem::is_directory(patch_dir, ec)) {
+        return;
+    }
+    for (const auto& repo : std::filesystem::directory_iterator(patch_dir, ec)) {
+        const auto index_path = repo.path() / "files.json";
+        if (!repo.is_directory() || !std::filesystem::is_regular_file(index_path, ec)) {
+            continue;
+        }
+        nlohmann::json index;
+        try {
+            std::ifstream{index_path} >> index;
+        } catch (const std::exception&) {
+            continue;
+        }
+        if (!index.is_object()) {
+            continue;
+        }
+        for (const auto& [file_name, serials] : index.items()) {
+            if (!serials.is_array() ||
+                std::find(serials.begin(), serials.end(), serial) == serials.end()) {
+                continue;
+            }
+            const auto file = repo.path() / file_name;
+            pugi::xml_document doc;
+            if (!doc.load_file(file.c_str())) {
+                continue;
+            }
+            for (const auto& node : doc.child("Patch").children("Metadata")) {
+                GamePatch patch{
+                    .file = file,
+                    .name = node.attribute("Name").value(),
+                    .enabled = std::string_view{node.attribute("isEnabled").value()} == "true",
+                };
+                patch.resolution = NameHasResolution(patch.name);
+                if (patch.resolution) {
+                    resolutionOptions.push_back(patch.name);
+                    if (patch.enabled && resolutionSetting == 0) {
+                        resolutionSetting = static_cast<int>(resolutionOptions.size()) - 1;
+                    }
+                }
+                gamePatches.push_back(std::move(patch));
+            }
+        }
+    }
+}
+
+void SettingsWindow::SaveGamePatches() {
+    if (gamePatches.empty()) {
+        return;
+    }
+    // Only the resolution chosen in the combo stays enabled.
+    for (auto& patch : gamePatches) {
+        if (patch.resolution) {
+            patch.enabled =
+                resolutionSetting > 0 && patch.name == resolutionOptions[resolutionSetting];
+        }
+    }
+    std::map<std::filesystem::path, std::vector<const GamePatch*>> by_file;
+    for (const auto& patch : gamePatches) {
+        by_file[patch.file].push_back(&patch);
+    }
+    for (const auto& [file, patches] : by_file) {
+        pugi::xml_document doc;
+        if (!doc.load_file(file.c_str(),
+                           pugi::parse_default | pugi::parse_comments | pugi::parse_declaration)) {
+            LOG_ERROR(Config, "Could not read patch file {}", file.string());
+            continue;
+        }
+        for (auto node : doc.child("Patch").children("Metadata")) {
+            for (const auto* patch : patches) {
+                if (patch->name == node.attribute("Name").value()) {
+                    node.attribute("isEnabled").set_value(patch->enabled ? "true" : "false");
+                }
+            }
+        }
+        if (!doc.save_file(file.c_str(), "  ")) {
+            LOG_ERROR(Config, "Could not save patch file {}", file.string());
+        }
+    }
 }
 
 void SettingsWindow::AddSettingCheckbox(std::string name, bool& value) {

@@ -7,6 +7,7 @@
 #include "common/assert.h"
 #include "common/logging/log.h"
 #include "common/types.h"
+#include "core/emulator_settings.h"
 #include "input/controller.h"
 #include "input/input_handler.h"
 #include "input_mouse.h"
@@ -207,7 +208,8 @@ static float StickDeflection(const State& state, Axis axis) {
 // gives linear acceleration, which games read as a shake. Games ignore motion outside the
 // moments they ask for it. hotkey_toggle_stick_to_gyro turns this off and on.
 static void EmulateMotionFromStick(GameController* controller, u32 interval) {
-    const bool active = stick_motion_enabled && !controller->has_motion_sensors;
+    const bool active = EmulatorSettings.IsStickMotionEnabled() && stick_motion_enabled &&
+                        !controller->has_motion_sensors;
     if (!active) {
         if (stick_motion_was_active) {
             stick_motion_was_active = false;

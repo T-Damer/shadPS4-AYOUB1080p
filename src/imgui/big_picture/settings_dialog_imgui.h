@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <filesystem>
 #include <functional>
 #include <map>
 #include <variant>
@@ -32,7 +33,19 @@ private:
         Folders,
         Log,
         Experimental,
+        Tweaks,
     };
+
+    /// A patch of the game's patch files, toggled from the Tweaks tab.
+    struct GamePatch {
+        std::filesystem::path file;
+        std::string name;
+        bool enabled;
+        bool resolution; // name contains a resolution: only one of them is enabled at a time
+    };
+
+    void LoadGamePatches(const std::string& serial);
+    void SaveGamePatches();
 
     void SaveSettings(std::string profile);
     void LoadSettings(std::string profile);
@@ -166,6 +179,13 @@ private:
     bool pipelineCacheArchiveSetting;
     int extraDmemSetting;
     int vblankFrequencySetting;
+
+    // Tweaks tab (per game)
+    std::vector<GamePatch> gamePatches;
+    std::vector<std::string> resolutionOptions; // "Game default", then the resolution patches
+    int resolutionSetting = 0;
+    bool stickMotionSetting;
+    bool smoothShaderCompilationSetting;
 };
 
 } // namespace ImGuiEmuSettings
