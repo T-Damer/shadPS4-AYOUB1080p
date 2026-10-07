@@ -41,6 +41,12 @@ cache. First 20 s skipped.
   3440 aligned to 128 px). The game has no hard-coded 16:9 constant, so the camera is expected to
   widen (hor+); HUD may stretch. Unverified visually. Patch file backup:
   `inFAMOUS Second Son.xml.before-ultrawide`.
+- **abtest in the city (2026-10-07, standing still):** baseline 53.7, relax 171700 48.8, scout
+  47.1, scout+fast 51.0, gpu priority 52.3, hot pages 50.8, asc queue 45.2, baseline again 46.1.
+  No option beats the 7.6 fps drift between the two baselines (laptop heating up / clocking
+  down): none is worth enabling. The CPU averaged ~3.4 GHz (107% of base) while the 7735H can
+  boost one core to ~4.75 GHz. Windows plan already has boost Aggressive, EPP 25, min 80%.
+  Machenike L16P: its performance/turbo mode (Control Center / Fn hotkey) is the remaining lever.
 - **Display:** the external monitor is on the RTX 4060, the laptop panel on the AMD iGPU. Play on
   the external monitor; on the laptop panel every frame is copied between GPUs.
 
