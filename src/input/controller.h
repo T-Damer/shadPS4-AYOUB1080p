@@ -4,6 +4,7 @@
 #pragma once
 
 #include <array>
+#include <atomic>
 #include <mutex>
 #include <optional>
 #include <utility>
@@ -109,6 +110,8 @@ public:
     float gyro_buf[3] = {0.0f, 0.0f, 0.0f}, accel_buf[3] = {0.0f, 9.81f, 0.0f};
     s32 user_id = Libraries::UserService::ORBIS_USER_SERVICE_USER_ID_INVALID;
     SDL_Gamepad* m_sdl_gamepad = nullptr;
+    /// The connected gamepad reports gyro and accelerometer (false: keyboard only, XInput pads...).
+    std::atomic<bool> has_motion_sensors{false};
 
 private:
     // m_state_mutex must be held by the caller.

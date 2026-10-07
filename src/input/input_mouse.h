@@ -21,6 +21,7 @@ void SetMouseParams(float mouse_deadzone_offset, float mouse_speed, float mouse_
 void SetMouseGyroRollMode(bool mode);
 void SetMotionShake(bool active);
 void ToggleStickToGyro();
+void SetTouchpadSwipe(bool held);
 
 void EmulateJoystick(GameController* controller, u32 interval);
 void EmulateGyro(GameController* controller, u32 interval);

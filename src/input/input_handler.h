@@ -51,6 +51,7 @@
 #define KEY_TOGGLE 0x00200000
 #define MOUSE_GYRO_ROLL_MODE 0x00400000
 #define MOTION_SHAKE 0x00800000
+#define TOUCHPAD_SWIPE 0x01000000
 
 #define HOTKEY_FULLSCREEN 0xf0000001
 #define HOTKEY_PAUSE 0xf0000002
@@ -146,6 +147,8 @@ const std::map<std::string, u32> string_to_cbutton_map = {
     {"rightjoystick_halfmode", RIGHTJOYSTICK_HALFMODE},
     // shakes the controller while held, for controllers without motion sensors
     {"motion_shake", MOTION_SHAKE},
+    // for controllers without a touchpad: held, the sticks swipe on it; tapped, it clicks
+    {"touchpad_swipe", TOUCHPAD_SWIPE},
 
     // this is only for input
     {"back", SDL_GAMEPAD_BUTTON_BACK},
@@ -545,7 +548,7 @@ public:
 
 class ControllerAllOutputs {
 public:
-    static constexpr u64 output_count = 45;
+    static constexpr u64 output_count = 46;
     std::array<ControllerOutput, output_count> data = {
         // Important: these have to be the first, or else they will update in the wrong order
         ControllerOutput(LEFTJOYSTICK_HALFMODE),
@@ -553,6 +556,7 @@ public:
         ControllerOutput(KEY_TOGGLE),
         ControllerOutput(MOUSE_GYRO_ROLL_MODE),
         ControllerOutput(MOTION_SHAKE),
+        ControllerOutput(TOUCHPAD_SWIPE),
 
         // Button mappings
         ControllerOutput(SDL_GAMEPAD_BUTTON_NORTH),           // Triangle

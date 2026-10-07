@@ -174,6 +174,7 @@ void GameController::DisconnectController() {
     std::lock_guard lock{m_state_mutex};
     m_states_queue.Clear();
     m_sdl_gamepad = nullptr;
+    has_motion_sensors = false;
 
     const u8 connected_count = m_state.connected_count;
     m_state = {};
@@ -326,6 +327,9 @@ void GameControllers::TryOpenSDLControllers() {
                 UserManagement.LoginUser(u, i + 1);
                 c->ConnectController(pad);
                 if (EmulatorSettings.IsMotionControlsEnabled()) {
+                    c->has_motion_sensors =
+                        SDL_GamepadHasSensor(c->m_sdl_gamepad, SDL_SENSOR_GYRO) &&
+                        SDL_GamepadHasSensor(c->m_sdl_gamepad, SDL_SENSOR_ACCEL);
                     if (SDL_SetGamepadSensorEnabled(c->m_sdl_gamepad, SDL_SENSOR_GYRO, true)) {
                         const float poll_rate =
                             SDL_GetGamepadSensorDataRate(c->m_sdl_gamepad, SDL_SENSOR_GYRO);

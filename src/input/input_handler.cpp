@@ -75,7 +75,7 @@ l3 = x
 r3 = m
 
 options = enter
-touchpad_center = space
+touchpad_swipe = space
 
 pad_up = up
 pad_down = down
@@ -107,7 +107,7 @@ r2 = r2
 r3 = r3
 
 options = options
-touchpad_center = back
+touchpad_swipe = back
 
 pad_up = pad_up
 pad_down = pad_down
@@ -830,6 +830,9 @@ void ControllerOutput::FinalizeUpdate(u8 gamepad_index) {
             break;
         case MOTION_SHAKE:
             SetMotionShake(new_button_state);
+            break;
+        case TOUCHPAD_SWIPE:
+            SetTouchpadSwipe(new_button_state);
             break;
         default: // is a normal key (hopefully)
             controller->Button(SDLGamepadToOrbisButton(button), new_button_state);
