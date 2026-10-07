@@ -201,6 +201,7 @@ void GetGameIconInfo(std::vector<IconInfo>& icons) {
                         icon.serial = *title_id;
                     }
                 } else {
+                    LOG_WARNING(ImGui, "Game list: could not read {}", sfoPath.string());
                     continue;
                 }
 
@@ -285,8 +286,15 @@ void Launch(char* executableName, bool sameProcess) {
                                 EmulatorSettings.IsFullScreen() ? SDL_WINDOW_FULLSCREEN : 0);
     };
     applySettings();
+    u64 last_scan_ms = SDL_GetTicks();
 
     while (!done) {
+        // An empty list is scanned again every 2 seconds: right after a game closes, its files can
+        // still be held by the exiting emulator process.
+        if (gameIcons.empty() && SDL_GetTicks() - last_scan_ms > 2000) {
+            GetGameIconInfo(gameIcons);
+            last_scan_ms = SDL_GetTicks();
+        }
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
             ImGui_ImplSDL3_ProcessEvent(&event);
