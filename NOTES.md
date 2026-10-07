@@ -57,9 +57,15 @@ cache. First 20 s skipped.
 - Real tilt aiming is still possible: Space Station -> motion sensing -> map to mouse, then F6 in
   the game turns mouse movement back into gyro (and fast movement into shake).
 - Own build (2026-10-07, "connect and play"): with a pad without motion sensors (or keyboard), the
-  right stick also tilts the controller (spray aim) and wiggling it quickly shakes; **hold Select +
-  stick** = touchpad swipe, tap Select = touchpad click (keyboard: Space + I/J/K/L). Automatic, no
-  extra buttons; T turns the stick motion off/on, G still shakes.
+  right stick also tilts the controller (spray aim) and wiggling it quickly shakes. **Select
+  toggles touch mode** (on-screen touchpad at the bottom): a stick pushed = a finger swiping, both
+  sticks = two fingers ("move car"), Cross = touchpad click; the game's sticks stay centred.
+  Keyboard: Space toggles, I/J/K/L and W/A/S/D are the fingers. Automatic, no extra buttons; T turns
+  the stick motion off/on, G still shakes.
+- Ultrawide / resolution changes in Tweaks apply at the next start of the game.
+- Missing smoke-dash effect (2026-10-07): suspected `readback_relaxed_sites = 3f3e00` (stale
+  visibility data -> 28% fewer draws); turned off to test. Smooth shader compilation skipped nothing
+  in that session, so it is not the cause.
 - SDL3 (inside the emulator) reads gyro + accelerometer natively from the Flydigi Vader 3 Pro,
   Vader 4 Pro, Vader 5 Pro and Apex 5 in their D-input mode (USB VID 04B4 or 37D7). Apex 4 and
   Vader 2 only report motion in gyro-mouse mode; older models none. If the pad supports it, switch
