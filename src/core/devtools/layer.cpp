@@ -3,6 +3,7 @@
 
 #include "layer.h"
 
+#include <algorithm>
 #include <SDL3/SDL_events.h>
 #include <imgui.h>
 
@@ -14,6 +15,7 @@
 #include "core/emulator_state.h"
 #include "imgui/imgui_std.h"
 #include "imgui_internal.h"
+#include "input/input_mouse.h"
 #include "options.h"
 #include "video_core/renderer_vulkan/vk_presenter.h"
 #include "widget/frame_dump.h"
@@ -417,6 +419,43 @@ void L::Draw() {
         ImVec2 pos = ImVec2(10, 10);
         ImU32 color = IM_COL32(255, 255, 255, 255);
         ImGui::GetForegroundDrawList()->AddText(pos, color, "Emulation Paused");
+    }
+
+    if (const auto touch = Input::GetTouchView(); touch.active) {
+        // Touch mode: the emulated touchpad with a cursor for each stick, filled while touching.
+        const ImGuiViewport* viewport = GetMainViewport();
+        const float pad_width = std::min(viewport->WorkSize.x * 0.25f, 420.0f);
+        const float pad_height = pad_width * 941.0f / 1920.0f;
+        SetNextWindowPos(ImVec2(viewport->WorkPos.x + viewport->WorkSize.x * 0.5f,
+                                viewport->WorkPos.y + viewport->WorkSize.y - 20.0f),
+                         ImGuiCond_Always, ImVec2(0.5f, 1.0f));
+        SetNextWindowBgAlpha(0.35f);
+        if (Begin("Touch Mode", nullptr,
+                  ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoDecoration |
+                      ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoDocking |
+                      ImGuiWindowFlags_NoInputs)) {
+            SetWindowFontScale(0.85f);
+            Text("Touch: sticks move, hold L2/R2 to touch, L3/R3 flick, Cross click, "
+                 "Select exit");
+            const ImVec2 origin = GetCursorScreenPos();
+            const ImVec2 corner(origin.x + pad_width, origin.y + pad_height);
+            ImDrawList* draw = GetWindowDrawList();
+            draw->AddRectFilled(origin, corner, IM_COL32(255, 255, 255, 45), 10.0f);
+            draw->AddRect(origin, corner, IM_COL32(255, 255, 255, 160), 10.0f, 0, 2.0f);
+            const ImU32 colors[2] = {IM_COL32(90, 175, 255, 235), IM_COL32(255, 160, 60, 235)};
+            for (int i = 0; i < 2; ++i) {
+                const ImVec2 at(origin.x + touch.x[i] * pad_width,
+                                origin.y + touch.y[i] * pad_height);
+                const float radius = pad_height * 0.08f;
+                if (touch.down[i]) {
+                    draw->AddCircleFilled(at, radius, colors[i]);
+                } else {
+                    draw->AddCircle(at, radius, colors[i], 0, 2.5f);
+                }
+            }
+            Dummy(ImVec2(pad_width, pad_height));
+        }
+        End();
     }
 
     if (show_simple_fps) {

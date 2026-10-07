@@ -107,7 +107,7 @@ r2 = r2
 r3 = r3
 
 options = options
-touchpad_center = back
+touch_mode = back
 
 pad_up = pad_up
 pad_down = pad_down
@@ -835,7 +835,38 @@ void ControllerOutput::FinalizeUpdate(u8 gamepad_index) {
         case MOTION_SHAKE:
             controller->SetEmulatedShake(new_button_state);
             break;
+        case TOUCH_MODE:
+            if (new_button_state) {
+                ToggleTouchMode();
+                // The game's sticks and triggers stay still in touch mode, and get the player's
+                // again when it ends.
+                const bool touch = IsTouchModeActive();
+                for (const Axis a : {Axis::LeftX, Axis::LeftY, Axis::RightX, Axis::RightY}) {
+                    controller->Axis(a, GetAxis(-0x80, 0x7f, touch ? 0 : TouchAxisValue(a)));
+                }
+                for (const Axis a : {Axis::TriggerLeft, Axis::TriggerRight}) {
+                    const int value = touch ? 0 : TouchAxisValue(a);
+                    controller->Axis(a, GetAxis(0x0, 0x7f, value));
+                    controller->Button(a == Axis::TriggerLeft ? OrbisPadButtonDataOffset::L2
+                                                              : OrbisPadButtonDataOffset::R2,
+                                       value > 0x20);
+                }
+            }
+            break;
         default: // is a normal key (hopefully)
+            if (IsTouchModeActive()) {
+                // Touch mode: Cross clicks the touchpad, L3 and R3 flick a finger.
+                if (button == SDL_GAMEPAD_BUTTON_SOUTH) {
+                    SetTouchClick(new_button_state);
+                    break;
+                }
+                if (button == SDL_GAMEPAD_BUTTON_LEFT_STICK ||
+                    button == SDL_GAMEPAD_BUTTON_RIGHT_STICK) {
+                    SetTouchFlick(button == SDL_GAMEPAD_BUTTON_LEFT_STICK ? 0 : 1,
+                                  new_button_state);
+                    break;
+                }
+            }
             controller->Button(SDLGamepadToOrbisButton(button), new_button_state);
             break;
         }
@@ -866,16 +897,28 @@ void ControllerOutput::FinalizeUpdate(u8 gamepad_index) {
             break;
         case Axis::TriggerLeft:
             ApplyDeadzone(new_param, lefttrigger_deadzone[gamepad_index]);
+            NoteTouchAxis(c_axis, *new_param);
+            if (IsTouchModeActive()) {
+                return; // the trigger puts a finger down instead
+            }
             controller->Axis(c_axis, GetAxis(0x0, 0x7f, *new_param));
             controller->Button(OrbisPadButtonDataOffset::L2, *new_param > 0x20);
             return;
         case Axis::TriggerRight:
             ApplyDeadzone(new_param, righttrigger_deadzone[gamepad_index]);
+            NoteTouchAxis(c_axis, *new_param);
+            if (IsTouchModeActive()) {
+                return;
+            }
             controller->Axis(c_axis, GetAxis(0x0, 0x7f, *new_param));
             controller->Button(OrbisPadButtonDataOffset::R2, *new_param > 0x20);
             return;
         default:
             break;
+        }
+        NoteTouchAxis(c_axis, static_cast<int>(*new_param * multiplier));
+        if (IsTouchModeActive()) {
+            return; // the stick moves a touchpad cursor instead
         }
         controller->Axis(c_axis, GetAxis(-0x80, 0x7f, *new_param * multiplier));
     }
