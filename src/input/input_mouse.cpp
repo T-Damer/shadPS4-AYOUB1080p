@@ -134,6 +134,12 @@ std::array<std::atomic<bool>, 2> touch_flick_held{false, false};
 // Fingers kept on the touchpad after touch mode ends, while their trigger stays held, so the
 // game can get its buttons (R2 in inFAMOUS Second Son) while a finger holds a swipe.
 std::array<std::atomic<bool>, 2> finger_held_after{false, false};
+
+std::atomic<bool> motion_mode{false};
+std::atomic<int> motion_tilt{0};
+std::atomic<bool> motion_shaking{false};
+bool motion_was_active = false;
+constexpr float MotionTurnRate = 2.5f; // rad/s at full deflection of the right stick
 // Sticks (-128..128) and triggers (0..128) as the player holds them, by Axis.
 std::array<std::atomic<int>, std::to_underlying(Axis::AxisMax)> touch_axes{};
 
@@ -252,7 +258,47 @@ void EmulateStickTouch(GameController* controller, u32 interval) {
     }
 }
 
+void EmulateMotionMode(GameController* controller) {
+    if (!motion_mode) {
+        if (motion_was_active) {
+            constexpr float still[3] = {0.0f, 0.0f, 0.0f};
+            controller->SetEmulatedRotationRate(still);
+            motion_was_active = false;
+        }
+        return;
+    }
+    motion_was_active = true;
+    // Finer near the centre of the stick, like the touch cursors.
+    const float rx = StickOf(Axis::RightX), ry = StickOf(Axis::RightY);
+    const float rate[3] = {-ry * std::abs(ry) * MotionTurnRate, -rx * std::abs(rx) * MotionTurnRate,
+                           0.0f};
+    controller->SetEmulatedRotationRate(rate);
+}
+
 } // namespace
+
+void ToggleMotionMode() {
+    motion_mode = !motion_mode;
+    motion_tilt = 0;
+    motion_shaking = false;
+    LOG_INFO(Input, "Motion mode {}", motion_mode ? "on" : "off");
+}
+
+bool IsMotionModeActive() {
+    return motion_mode;
+}
+
+int ToggleMotionTilt(int side) {
+    motion_tilt = motion_tilt == side ? 0 : side;
+    return motion_tilt;
+}
+
+void SetMotionShaking(bool shaking) {
+    if (motion_shaking != shaking) {
+        LOG_INFO(Input, "Shake {}", shaking ? "on" : "off");
+    }
+    motion_shaking = shaking;
+}
 
 void ToggleTouchMode() {
     if (touch_mode) {
@@ -305,6 +351,9 @@ TouchView GetTouchView() {
     TouchView view{};
     view.active = touch_mode;
     view.held_after = finger_held_after[0] || finger_held_after[1];
+    view.motion_active = motion_mode;
+    view.motion_tilt = motion_tilt;
+    view.motion_shaking = motion_shaking;
     for (int f = 0; f < 2; ++f) {
         view.down[f] = finger_shown_down[f];
         view.x[f] = finger_shown[f * 2];
@@ -316,6 +365,7 @@ TouchView GetTouchView() {
 Uint32 MousePolling(void* param, Uint32 id, Uint32 interval) {
     auto* controller = (GameController*)param;
     EmulateStickTouch(controller, interval);
+    EmulateMotionMode(controller);
     static bool was_gyro = false;
     if (was_gyro && mouse_mode != MouseMode::Gyro) {
         // Otherwise the last mouse movement keeps turning the controller after gyro mode is off

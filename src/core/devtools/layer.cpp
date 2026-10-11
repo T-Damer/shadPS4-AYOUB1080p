@@ -421,6 +421,28 @@ void L::Draw() {
         ImGui::GetForegroundDrawList()->AddText(pos, color, "Emulation Paused");
     }
 
+    if (const auto motion = Input::GetTouchView(); motion.motion_active) {
+        // Motion mode: what the emulated controller is doing, at the top so it stays off the wall
+        // being painted.
+        const ImGuiViewport* viewport = GetMainViewport();
+        SetNextWindowPos(ImVec2(viewport->WorkPos.x + viewport->WorkSize.x * 0.5f,
+                                viewport->WorkPos.y + 12.0f),
+                         ImGuiCond_Always, ImVec2(0.5f, 0.0f));
+        SetNextWindowBgAlpha(0.35f);
+        if (Begin("Motion Mode", nullptr,
+                  ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoDecoration |
+                      ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoDocking |
+                      ImGuiWindowFlags_NoInputs)) {
+            SetWindowFontScale(0.85f);
+            Text("Motion: D-pad left/right tilt, hold L1 shake, right stick aim, R2 spray, "
+                 "L3+R3 exit");
+            const char* tilt = motion.motion_tilt < 0   ? "on its left side"
+                               : motion.motion_tilt > 0 ? "on its right side"
+                                                        : "upright";
+            Text("Controller %s%s", tilt, motion.motion_shaking ? ", shaking" : "");
+        }
+        End();
+    }
     if (const auto touch = Input::GetTouchView(); touch.active || touch.held_after) {
         // Touch mode: the emulated touchpad with a cursor for each stick, filled while touching.
         const ImGuiViewport* viewport = GetMainViewport();

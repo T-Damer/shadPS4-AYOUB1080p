@@ -108,6 +108,7 @@ r3 = r3
 
 options = options
 touch_mode = back
+motion_mode = l3, r3
 
 pad_up = pad_up
 pad_down = pad_down
@@ -854,7 +855,41 @@ void ControllerOutput::FinalizeUpdate(u8 gamepad_index) {
                 }
             }
             break;
+        case MOTION_MODE:
+            if (new_button_state && !IsTouchModeActive()) {
+                ToggleMotionMode();
+                const bool motion = IsMotionModeActive();
+                // The right stick turns the controller in motion mode instead of the camera.
+                for (const Axis a : {Axis::RightX, Axis::RightY}) {
+                    controller->Axis(a, GetAxis(-0x80, 0x7f, motion ? 0 : TouchAxisValue(a)));
+                }
+                if (!motion) {
+                    controller->SetEmulatedTilt(TiltDirection::Left, false);
+                    controller->SetEmulatedTilt(TiltDirection::Right, false);
+                    controller->SetEmulatedShake(false);
+                    SetMotionShaking(false);
+                }
+            }
+            break;
         default: // is a normal key (hopefully)
+            if (IsMotionModeActive()) {
+                // Motion mode: D-pad left or right lays the controller on that side, L1 shakes.
+                if (button == SDL_GAMEPAD_BUTTON_DPAD_LEFT ||
+                    button == SDL_GAMEPAD_BUTTON_DPAD_RIGHT) {
+                    if (new_button_state) {
+                        const int side = ToggleMotionTilt(
+                            button == SDL_GAMEPAD_BUTTON_DPAD_LEFT ? -1 : 1);
+                        controller->SetEmulatedTilt(TiltDirection::Left, side < 0);
+                        controller->SetEmulatedTilt(TiltDirection::Right, side > 0);
+                    }
+                    break;
+                }
+                if (button == SDL_GAMEPAD_BUTTON_LEFT_SHOULDER) {
+                    controller->SetEmulatedShake(new_button_state);
+                    SetMotionShaking(new_button_state);
+                    break;
+                }
+            }
             if (IsTouchModeActive()) {
                 // Touch mode: Cross clicks the touchpad, L3 and R3 flick a finger.
                 if (button == SDL_GAMEPAD_BUTTON_SOUTH) {
@@ -920,6 +955,9 @@ void ControllerOutput::FinalizeUpdate(u8 gamepad_index) {
         NoteTouchAxis(c_axis, static_cast<int>(*new_param * multiplier));
         if (IsTouchModeActive()) {
             return; // the stick moves a touchpad cursor instead
+        }
+        if (IsMotionModeActive() && (c_axis == Axis::RightX || c_axis == Axis::RightY)) {
+            return; // the right stick turns the controller instead
         }
         controller->Axis(c_axis, GetAxis(-0x80, 0x7f, *new_param * multiplier));
     }

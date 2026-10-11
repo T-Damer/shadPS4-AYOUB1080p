@@ -40,8 +40,20 @@ int TouchAxisValue(Axis axis);
 void SetTouchClick(bool held);
 void SetTouchFlick(int finger, bool held);
 
+// Motion mode (motion_mode binding, L3 + R3 by default), for spray cans on controllers without
+// motion sensors: the right stick turns the controller, D-pad left or right lays it on that side
+// (press again to straighten) and L1 shakes it, while everything else reaches the game.
+void ToggleMotionMode();
+bool IsMotionModeActive();
+// D-pad press in motion mode: the side the controller now lies on (-1 left, 0 upright, 1 right).
+int ToggleMotionTilt(int side);
+void SetMotionShaking(bool shaking);
+
 struct TouchView {
     bool active;
+    bool motion_active;
+    int motion_tilt;
+    bool motion_shaking;
     bool held_after; // a finger held by its trigger after touch mode ended
     bool down[2];
     float x[2];

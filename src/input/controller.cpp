@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: Copyright 2024-2026 shadPS4 Emulator Project
+// SPDX-FileCopyrightText: Copyright 2024-2026 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <algorithm>
@@ -65,6 +65,8 @@ constexpr float TwoPi = 6.2831855f;
 constexpr float EmulatedTiltSpeed = TwoPi;
 constexpr float EmulatedShakeFrequency = 5.0f;
 constexpr float EmulatedShakeAmplitude = 2.0f * Gravity;
+// A real shake also rocks the controller back and forth around its X axis.
+constexpr float EmulatedShakeWobble = 6.0f; // rad/s
 
 Quaternion Multiply(const Quaternion& a, const Quaternion& b) {
     return {a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
@@ -311,6 +313,9 @@ void GameController::UpdateEmulatedMotionLocked(u64 timestamp) {
         std::fill(gyro_buf, gyro_buf + 3, 0.0f);
     }
     m_emu_pose = pose;
+    if (m_emu_shake) {
+        gyro_buf[0] += EmulatedShakeWobble * std::cos(m_emu_shake_phase);
+    }
 
     // The accelerometer reports the reaction to gravity, plus the up and down motion of a shake,
     // turned into controller axes.

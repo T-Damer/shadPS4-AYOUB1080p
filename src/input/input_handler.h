@@ -54,6 +54,7 @@
 #define MOTION_TILT_RIGHT 0x01000000
 #define MOTION_SHAKE 0x02000000
 #define TOUCH_MODE 0x04000000
+#define MOTION_MODE 0x08000000
 
 #define HOTKEY_FULLSCREEN 0xf0000001
 #define HOTKEY_PAUSE 0xf0000002
@@ -150,6 +151,7 @@ const std::map<std::string, u32> string_to_cbutton_map = {
     {"motion_tilt_right", MOTION_TILT_RIGHT},
     {"motion_shake", MOTION_SHAKE},
     {"touch_mode", TOUCH_MODE},
+    {"motion_mode", MOTION_MODE},
 
     // this is only for input
     {"back", SDL_GAMEPAD_BUTTON_BACK},
@@ -548,7 +550,7 @@ public:
 
 class ControllerAllOutputs {
 public:
-    static constexpr u64 output_count = 47;
+    static constexpr u64 output_count = 48;
     std::array<ControllerOutput, output_count> data = {
         // Important: these have to be the first, or else they will update in the wrong order
         ControllerOutput(LEFTJOYSTICK_HALFMODE),
@@ -579,6 +581,7 @@ public:
         ControllerOutput(MOTION_TILT_RIGHT),
         ControllerOutput(MOTION_SHAKE),
         ControllerOutput(TOUCH_MODE),
+        ControllerOutput(MOTION_MODE),
 
         // Axis mappings
         // ControllerOutput(SDL_GAMEPAD_BUTTON_INVALID, SDL_GAMEPAD_AXIS_LEFTX, false),
